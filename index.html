@@ -1,539 +1,1808 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Anyfy — Music Beyond Limits</title>
-  <meta name="description" content="Anyfy is the next-generation Android music player. Stream millions of tracks ad-free, with AI discovery and a UI that destroys Spotify." />
-  <meta property="og:title" content="Anyfy — Music Beyond Limits" />
-  <meta property="og:description" content="The premium Android music player. Free forever. Zero ads. 320kbps." />
-  <meta property="og:type" content="website" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --void: #060608;
-      --glass: rgba(255,255,255,0.04);
-      --glass-border: rgba(255,255,255,0.08);
-      --white: #f0eee8;
-      --mute: #7a7a8a;
-      --coral: #ff5c35;
-      --coral-dim: rgba(255,92,53,0.18);
-      --coral-glow: rgba(255,92,53,0.45);
-      --purple: #8b00ff;
-      --purple-dim: rgba(139,0,255,0.18);
-      --blue: #1a1aff;
-      --gold: #ffd700;
-      --r: cubic-bezier(0.23, 1, 0.32, 1);
-      --r-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-      --font-display: 'Syne', sans-serif;
-      --font-body: 'Inter', sans-serif;
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Anyfy — The Player You Deserve</title>
+<meta name="description" content="Anyfy. The Android music player that makes Spotify look like a demo. Free. Ad-free. Forever."/>
+<meta property="og:title" content="Anyfy — The Player You Deserve"/>
+<meta property="og:description" content="Free Android music player. AI discovery. Zero ads. Sounds insane. Is insane."/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js">
+/* AUDIO SYSTEM & INTERACTION */
+(function() {
+  var audio = document.createElement('audio');
+  audio.id = 'p-audio';
+  audio.crossOrigin = 'anonymous';
+  document.body.appendChild(audio);
+
+  var playBtn = document.querySelector('.ctrl-play');
+  var progBar = document.querySelector('.prog-bar');
+  var progFill = document.querySelector('.prog-fill');
+  var progDot = document.querySelector('.prog-dot');
+  var timeCur = document.querySelector('.prog-times span:first-child');
+  var timeTotal = document.querySelector('.prog-times span:last-child');
+  
+  var searchBtn = document.getElementById('p-search-btn');
+  var searchClose = document.getElementById('p-search-close');
+  var searchOverlay = document.getElementById('p-search-overlay');
+  var searchInput = document.getElementById('p-search-input');
+  var searchResults = document.getElementById('p-search-results');
+  
+  var lyricsBtn = document.getElementById('p-lyrics-btn');
+  var lyricsClose = document.getElementById('p-lyrics-close');
+  var lyricsOverlay = document.getElementById('p-lyrics-overlay');
+  var lyricsLines = document.getElementById('p-lyrics-lines');
+  var lyricsBody = document.getElementById('p-lyrics-body');
+  
+  var currentSong = {
+    id: "default_afsos",
+    title: "Afsos",
+    artist: "Anuv Jain, AP Dhillon",
+    thumbnailUrl: "https://c.saavncdn.com/773/Afsos-Punjabi-2025-20250129053900-500x500.jpg",
+    streamUrl: "https://aac.saavncdn.com/773/a05bddf58f9158b522b7d782c77612ba_320.mp4",
+    durationMs: 191000
+  };
+  
+  var activeLyrics = [];
+  var songQueue = [];
+  var queueIndex = 0;
+  
+  // Set default audio src
+  audio.src = currentSong.streamUrl;
+  
+  // Web Audio setup
+  var audioCtx, analyser, sourceNode;
+  function initAudio() {
+    if (audioCtx) return;
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      sourceNode = audioCtx.createMediaElementSource(audio);
+      sourceNode.connect(analyser);
+      analyser.connect(audioCtx.destination);
+      window.anyfyAnalyser = analyser;
+      window.anyfyFreqData = new Uint8Array(analyser.frequencyBinCount);
+    } catch(e) {
+      console.error("Web Audio API failed", e);
     }
-    html { scroll-behavior: smooth; }
-    body { background: var(--void); color: var(--white); font-family: var(--font-body); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
-    #bg-canvas { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
-    body::before {
-      content: ''; position: fixed; inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
-      pointer-events: none; z-index: 1; opacity: 0.5;
+  }
+
+  // Play/Pause toggle
+  playBtn.addEventListener('click', function() {
+    initAudio();
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
     }
-    /* NAV */
-    nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 20px 48px; transition: background 0.4s, backdrop-filter 0.4s; }
-    nav.scrolled { background: rgba(6,6,8,0.88); backdrop-filter: blur(24px) saturate(180%); border-bottom: 1px solid var(--glass-border); }
-    .nav-logo { font-family: var(--font-display); font-size: 26px; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(135deg, var(--white) 30%, var(--coral)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; text-decoration: none; }
-    .nav-links { display: flex; align-items: center; gap: 36px; list-style: none; }
-    .nav-links a { color: var(--mute); text-decoration: none; font-size: 14px; font-weight: 500; letter-spacing: 0.02em; transition: color 0.2s; }
-    .nav-links a:hover { color: var(--white); }
-    .nav-cta { background: linear-gradient(135deg, var(--coral), #ff3d00) !important; color: #fff !important; padding: 10px 24px; border-radius: 100px; font-weight: 600 !important; box-shadow: 0 0 24px var(--coral-glow); transition: transform 0.2s var(--r-spring), box-shadow 0.2s !important; }
-    .nav-cta:hover { transform: scale(1.05) !important; box-shadow: 0 0 40px var(--coral-glow) !important; }
-    section { position: relative; z-index: 2; }
-    /* HERO */
-    #hero { min-height: 100vh; display: flex; align-items: center; justify-content: center; text-align: center; padding: 120px 24px 80px; overflow: hidden; }
-    .hero-aura { position: absolute; width: 700px; height: 700px; border-radius: 50%; background: radial-gradient(circle, rgba(255,92,53,0.25) 0%, rgba(139,0,255,0.15) 45%, transparent 70%); top: 50%; left: 50%; transform: translate(-50%,-60%); filter: blur(80px); animation: aura-pulse 6s ease-in-out infinite alternate; pointer-events: none; }
-    @keyframes aura-pulse { 0% { transform: translate(-50%,-60%) scale(1); opacity:0.7; } 100% { transform: translate(-50%,-55%) scale(1.2); opacity:1; } }
-    .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: var(--coral-dim); border: 1px solid rgba(255,92,53,0.3); border-radius: 100px; padding: 8px 18px; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--coral); margin-bottom: 32px; animation: badge-in 0.8s var(--r-spring) both; }
-    .badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--coral); box-shadow: 0 0 8px var(--coral); animation: dot-pulse 1.5s ease infinite; }
-    @keyframes dot-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.7)} }
-    @keyframes badge-in { from{opacity:0;transform:translateY(20px) scale(0.9)} to{opacity:1;transform:none} }
-    .hero-title { font-family: var(--font-display); font-size: clamp(54px,9vw,130px); font-weight: 800; line-height: 0.9; letter-spacing: -3px; margin-bottom: 28px; animation: title-in 1s 0.15s var(--r) both; }
-    @keyframes title-in { from{opacity:0;transform:translateY(40px)} to{opacity:1;transform:none} }
-    .hero-title .line-1 { display: block; color: var(--white); }
-    .hero-title .line-2 { display: block; background: linear-gradient(90deg, var(--coral) 0%, #ff8c42 40%, var(--purple) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 200% auto; animation: gradient-shift 4s linear infinite; }
-    @keyframes gradient-shift { 0%{background-position:0% center} 100%{background-position:200% center} }
-    .hero-subtitle { font-size: clamp(15px,2vw,19px); color: var(--mute); line-height: 1.7; max-width: 560px; margin: 0 auto 48px; animation: title-in 1s 0.3s var(--r) both; }
-    .hero-ctas { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; animation: title-in 1s 0.45s var(--r) both; }
-    .btn-primary { display: inline-flex; align-items: center; gap: 10px; background: linear-gradient(135deg, var(--coral) 0%, #ff3d00 100%); color: #fff; padding: 16px 36px; border-radius: 100px; font-size: 16px; font-weight: 600; text-decoration: none; box-shadow: 0 0 40px var(--coral-glow), 0 8px 48px rgba(255,92,53,0.25); transition: transform 0.25s var(--r-spring), box-shadow 0.25s; position: relative; overflow: hidden; }
-    .btn-primary:hover { transform: scale(1.05) translateY(-2px); box-shadow: 0 0 60px var(--coral-glow), 0 16px 64px rgba(255,92,53,0.35); }
-    .btn-secondary { display: inline-flex; align-items: center; gap: 10px; background: var(--glass); border: 1px solid var(--glass-border); color: var(--white); padding: 16px 36px; border-radius: 100px; font-size: 16px; font-weight: 500; text-decoration: none; backdrop-filter: blur(12px); transition: all 0.25s; }
-    .btn-secondary:hover { background: rgba(255,255,255,0.08); transform: translateY(-2px); }
-    /* PHONE */
-    .hero-phone-wrap { margin-top: 72px; position: relative; display: flex; justify-content: center; animation: float-phone 6s ease-in-out infinite; }
-    @keyframes float-phone { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-20px)} }
-    .phone-3d { position: relative; width: 280px; height: 570px; background: linear-gradient(160deg, #1a1a2e 0%, #16213e 50%, #0f0f1a 100%); border-radius: 48px; border: 1.5px solid rgba(255,255,255,0.12); box-shadow: 0 0 0 6px rgba(255,255,255,0.03), 0 40px 120px rgba(0,0,0,0.8), 0 0 80px rgba(255,92,53,0.2), inset 0 1px 0 rgba(255,255,255,0.1); transform: perspective(1000px) rotateX(4deg) rotateY(-8deg); transform-style: preserve-3d; overflow: hidden; cursor: pointer; transition: transform 0.6s var(--r); }
-    .phone-notch { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); width: 100px; height: 28px; background: #000; border-radius: 100px; z-index: 10; }
-    .phone-screen { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; display: flex; flex-direction: column; align-items: center; padding-top: 60px; }
-    .phone-album { width: 180px; height: 180px; border-radius: 20px; background: linear-gradient(135deg, var(--coral) 0%, #8b00ff 60%, #1a1aff 100%); box-shadow: 0 0 60px rgba(255,92,53,0.6), 0 20px 60px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; font-size: 64px; animation: album-glow 4s ease-in-out infinite alternate; }
-    @keyframes album-glow { 0%{box-shadow:0 0 40px rgba(255,92,53,0.5),0 20px 60px rgba(0,0,0,0.5)} 100%{box-shadow:0 0 80px rgba(139,0,255,0.6),0 20px 60px rgba(0,0,0,0.5)} }
-    .phone-track-name { font-family: var(--font-display); font-size: 16px; font-weight: 700; color: #fff; text-align: center; margin-top: 20px; }
-    .phone-track-artist { font-size: 12px; color: rgba(255,255,255,0.5); text-align: center; margin-top: 4px; }
-    .phone-waveform { display: flex; align-items: flex-end; gap: 3px; height: 40px; margin-top: 20px; padding: 0 30px; }
-    .phone-bar { flex: 1; background: linear-gradient(to top, var(--coral), rgba(255,92,53,0.3)); border-radius: 3px; animation: wave-bar var(--dur,0.8s) ease-in-out infinite alternate; }
-    @keyframes wave-bar { from{height:8px} to{height:var(--h,30px)} }
-    .phone-controls { display: flex; align-items: center; gap: 28px; margin-top: 20px; }
-    .ctrl-btn { font-size: 18px; cursor: pointer; opacity: 0.6; }
-    .ctrl-btn.play { width: 52px; height: 52px; background: var(--coral); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; opacity: 1; box-shadow: 0 0 24px var(--coral-glow); }
-    .phone-progress { width: 220px; height: 3px; background: rgba(255,255,255,0.15); border-radius: 3px; margin-top: 16px; position: relative; overflow: hidden; }
-    .phone-progress-fill { position: absolute; left: 0; top: 0; height: 100%; background: linear-gradient(90deg, var(--coral), #ff8c42); border-radius: inherit; animation: progress-adv 8s linear infinite; }
-    @keyframes progress-adv { from{width:10%} to{width:90%} }
-    .phone-glow-floor { position: absolute; bottom: -60px; width: 300px; height: 300px; background: radial-gradient(circle, rgba(255,92,53,0.35) 0%, transparent 70%); border-radius: 50%; filter: blur(30px); pointer-events: none; left: 50%; transform: translateX(-50%); }
-    .scroll-hint { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--mute); font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; z-index: 10; animation: hint-float 2s ease-in-out infinite; }
-    @keyframes hint-float { 0%,100%{transform:translateX(-50%) translateY(0);opacity:0.7} 50%{transform:translateX(-50%) translateY(8px);opacity:1} }
-    /* STATS */
-    #stats { padding: 40px 48px; display: flex; justify-content: center; border-top: 1px solid var(--glass-border); border-bottom: 1px solid var(--glass-border); background: rgba(255,255,255,0.02); position: relative; z-index: 2; }
-    .stat { flex: 1; max-width: 200px; text-align: center; padding: 0 32px; border-right: 1px solid var(--glass-border); }
-    .stat:last-child { border-right: none; }
-    .stat-num { font-family: var(--font-display); font-size: 40px; font-weight: 800; background: linear-gradient(135deg, var(--coral), #ff8c42); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .stat-label { font-size: 12px; color: var(--mute); margin-top: 6px; letter-spacing: 0.08em; text-transform: uppercase; }
-    /* FEATURES */
-    #features { padding: 140px 48px; max-width: 1200px; margin: 0 auto; }
-    .section-label { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--coral); margin-bottom: 16px; position: relative; padding-left: 20px; }
-    .section-label::before { content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 10px; height: 2px; background: var(--coral); }
-    .section-title { font-family: var(--font-display); font-size: clamp(36px,5vw,64px); font-weight: 800; line-height: 1.05; letter-spacing: -1.5px; color: var(--white); margin-bottom: 20px; }
-    .section-title .accent { color: var(--coral); }
-    .section-subtitle { font-size: 17px; color: var(--mute); line-height: 1.7; max-width: 520px; margin-bottom: 72px; }
-    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-    .feat-card { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 24px; padding: 36px 32px; position: relative; overflow: hidden; cursor: default; transition: transform 0.4s, border-color 0.4s, box-shadow 0.4s; opacity: 0; transform: translateY(40px); }
-    .feat-card.visible { opacity: 1; transform: none; }
-    .feat-card::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at var(--mx,50%) var(--my,50%), rgba(255,92,53,0.08) 0%, transparent 60%); opacity: 0; transition: opacity 0.3s; }
-    .feat-card:hover::before { opacity: 1; }
-    .feat-card:hover { border-color: rgba(255,92,53,0.3); box-shadow: 0 0 40px rgba(255,92,53,0.08), 0 20px 60px rgba(0,0,0,0.3); transform: translateY(-4px); }
-    .feat-icon { width: 56px; height: 56px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 26px; margin-bottom: 24px; }
-    .feat-icon.coral { background: var(--coral-dim); }
-    .feat-icon.purple { background: var(--purple-dim); }
-    .feat-icon.blue { background: rgba(26,26,255,0.12); }
-    .feat-icon.gold { background: rgba(255,215,0,0.1); }
-    .feat-icon.green { background: rgba(0,255,120,0.1); }
-    .feat-icon.pink { background: rgba(255,0,128,0.1); }
-    .feat-name { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--white); margin-bottom: 12px; }
-    .feat-desc { font-size: 14px; color: var(--mute); line-height: 1.7; }
-    .feat-card.card-large { grid-column: span 2; display: flex; align-items: center; gap: 48px; }
-    .feat-card.card-large .feat-body { flex: 1; }
-    .feat-card.card-large .feat-visual { flex: 1; height: 200px; background: linear-gradient(135deg, rgba(255,92,53,0.1), rgba(139,0,255,0.08)); border-radius: 16px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-    .feat-visual-bars { display: flex; align-items: flex-end; gap: 4px; height: 120px; }
-    .fvb { width: 8px; border-radius: 4px 4px 0 0; background: linear-gradient(to top, var(--coral), rgba(255,92,53,0.3)); animation: fvb-dance var(--d,0.7s) ease-in-out infinite alternate; }
-    @keyframes fvb-dance { from{height:20%} to{height:var(--h,80%)} }
-    /* COMPARISON */
-    #comparison { padding: 140px 48px; background: linear-gradient(180deg, transparent 0%, rgba(255,92,53,0.03) 50%, transparent 100%); }
-    .comparison-wrap { max-width: 900px; margin: 0 auto; }
-    .compare-table { width: 100%; border-collapse: collapse; margin-top: 60px; border-radius: 20px; overflow: hidden; }
-    .compare-table thead tr { background: rgba(255,255,255,0.03); }
-    .compare-table th { padding: 20px 24px; font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--mute); border-bottom: 1px solid var(--glass-border); text-align: left; }
-    .compare-table th:nth-child(2) { color: var(--coral); font-size: 15px; }
-    .compare-table td { padding: 18px 24px; font-size: 15px; color: var(--mute); border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.2s; }
-    .compare-table tr:hover td { background: rgba(255,255,255,0.02); }
-    .compare-table td:first-child { color: var(--white); }
-    .compare-table td.anyfy { background: rgba(255,92,53,0.05); color: #00ff88; }
-    .compare-table td.yes { color: #00ff88; }
-    .compare-table td.no { color: #ff5555; }
-    /* HOW IT WORKS */
-    #how-it-works { padding: 140px 48px; max-width: 1100px; margin: 0 auto; }
-    .steps-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 40px; margin-top: 72px; position: relative; }
-    .steps-grid::before { content: ''; position: absolute; top: 40px; left: calc(16.66% + 20px); right: calc(16.66% + 20px); height: 1px; background: linear-gradient(90deg, transparent, var(--coral), transparent); }
-    .step { text-align: center; opacity: 0; transform: translateY(30px); }
-    .step.visible { opacity: 1; transform: none; transition: opacity 0.6s, transform 0.6s; }
-    .step-num { width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, rgba(255,92,53,0.2), rgba(139,0,255,0.1)); border: 1px solid rgba(255,92,53,0.3); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-size: 28px; font-weight: 800; color: var(--coral); margin: 0 auto 28px; box-shadow: 0 0 32px rgba(255,92,53,0.15); position: relative; z-index: 2; }
-    .step-title { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--white); margin-bottom: 12px; }
-    .step-desc { font-size: 14px; color: var(--mute); line-height: 1.7; }
-    /* TESTIMONIALS */
-    #testimonials { padding: 140px 0; overflow: hidden; }
-    .testimonials-header { max-width: 1200px; margin: 0 auto; padding: 0 48px; }
-    .testimonial-track { display: flex; gap: 24px; animation: scroll-marquee 30s linear infinite; width: max-content; margin-top: 64px; }
-    .testimonial-track:hover { animation-play-state: paused; }
-    @keyframes scroll-marquee { from{transform:translateX(0)} to{transform:translateX(-50%)} }
-    .tcard { background: var(--glass); border: 1px solid var(--glass-border); border-radius: 20px; padding: 28px 32px; width: 320px; flex-shrink: 0; }
-    .tcard-stars { color: var(--gold); font-size: 14px; margin-bottom: 16px; }
-    .tcard-text { font-size: 14px; color: var(--mute); line-height: 1.7; margin-bottom: 20px; }
-    .tcard-author { display: flex; align-items: center; gap: 12px; }
-    .tcard-avatar { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; background: var(--glass); border: 1px solid var(--glass-border); }
-    .tcard-name { font-size: 14px; font-weight: 600; color: var(--white); }
-    .tcard-handle { font-size: 12px; color: var(--mute); }
-    /* DOWNLOAD */
-    #download { padding: 160px 48px; text-align: center; position: relative; overflow: hidden; }
-    .dl-aura { position: absolute; width: 800px; height: 600px; border-radius: 50%; background: radial-gradient(ellipse, rgba(255,92,53,0.15) 0%, rgba(139,0,255,0.08) 50%, transparent 70%); top: 50%; left: 50%; transform: translate(-50%,-50%); filter: blur(80px); pointer-events: none; animation: aura-pulse 5s ease-in-out infinite alternate; }
-    .dl-content { position: relative; z-index: 2; }
-    .dl-title { font-family: var(--font-display); font-size: clamp(42px,6vw,84px); font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 24px; }
-    .dl-title .big { color: var(--white); }
-    .dl-title .glow { background: linear-gradient(90deg, var(--coral), #ff8c42, var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 200%; animation: gradient-shift 3s linear infinite; }
-    .dl-subtitle { font-size: 17px; color: var(--mute); margin-bottom: 56px; line-height: 1.7; }
-    .dl-buttons { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-bottom: 48px; }
-    .btn-download { display: inline-flex; align-items: center; gap: 14px; padding: 18px 40px; border-radius: 100px; font-size: 16px; font-weight: 600; text-decoration: none; transition: all 0.3s var(--r-spring); position: relative; overflow: hidden; }
-    .btn-download.apk { background: linear-gradient(135deg, var(--coral), #ff3d00); color: #fff; box-shadow: 0 0 48px var(--coral-glow), 0 12px 48px rgba(255,92,53,0.3); }
-    .btn-download.apk:hover { transform: scale(1.06) translateY(-3px); box-shadow: 0 0 80px var(--coral-glow), 0 20px 64px rgba(255,92,53,0.4); }
-    .btn-download.github { background: var(--glass); border: 1px solid var(--glass-border); color: var(--white); backdrop-filter: blur(12px); }
-    .btn-download.github:hover { background: rgba(255,255,255,0.1); transform: translateY(-3px); }
-    .btn-download-icon { font-size: 22px; }
-    .btn-download-label { display: flex; flex-direction: column; text-align: left; }
-    .btn-download-label span:first-child { font-size: 11px; font-weight: 400; opacity: 0.7; line-height: 1; }
-    .btn-download-label span:last-child { font-size: 17px; font-weight: 700; line-height: 1.3; }
-    .dl-badges { display: flex; justify-content: center; gap: 32px; flex-wrap: wrap; }
-    .dl-badge { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--mute); }
-    .dl-badge-dot { color: #00ff88; }
-    /* FOOTER */
-    footer { padding: 60px 48px 40px; border-top: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; position: relative; z-index: 2; }
-    .footer-logo { font-family: var(--font-display); font-size: 22px; font-weight: 800; background: linear-gradient(135deg, var(--white), var(--coral)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .footer-copy { font-size: 13px; color: var(--mute); }
-    .footer-links { display: flex; gap: 24px; }
-    .footer-links a { font-size: 13px; color: var(--mute); text-decoration: none; transition: color 0.2s; }
-    .footer-links a:hover { color: var(--white); }
-    /* CURSOR */
-    .cursor-glow { position: fixed; pointer-events: none; z-index: 9999; width: 300px; height: 300px; border-radius: 50%; background: radial-gradient(circle, rgba(255,92,53,0.06) 0%, transparent 70%); transform: translate(-50%,-50%); }
-    /* REVEAL */
-    .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.7s var(--r), transform 0.7s var(--r); }
-    .reveal.visible { opacity: 1; transform: none; }
-    /* RESPONSIVE */
-    @media(max-width:768px){
-      nav { padding: 16px 24px; }
-      .nav-links { display: none; }
-      #features,#comparison,#how-it-works,#download,footer { padding-left: 24px; padding-right: 24px; }
-      #stats { padding: 24px; }
-      .stat { padding: 0 12px; }
-      .stat-num { font-size: 26px; }
-      .feat-card.card-large { grid-column: span 1; flex-direction: column; }
-      .steps-grid { grid-template-columns: 1fr; }
-      .steps-grid::before { display: none; }
-      footer { flex-direction: column; text-align: center; }
-      .compare-table th,.compare-table td { padding: 12px 8px; font-size: 12px; }
+    if (audio.paused) {
+      audio.play().then(function() {
+        playBtn.innerHTML = '&#9646;&#9646;';
+      }).catch(function(e) {
+        console.error("Playback failed", e);
+      });
+    } else {
+      audio.pause();
+      playBtn.innerHTML = '&#9654;';
     }
-  </style>
+  });
+
+  // Time & progress update
+  var isSeeking = false;
+  audio.addEventListener('timeupdate', function() {
+    if (isSeeking) return;
+    var p = audio.currentTime / (audio.duration || 1);
+    progFill.style.width = (p * 100) + '%';
+    
+    var curMin = Math.floor(audio.currentTime / 60);
+    var curSec = Math.floor(audio.currentTime % 60);
+    timeCur.textContent = curMin + ':' + (curSec < 10 ? '0' : '') + curSec;
+    
+    // Sync lyrics scroll
+    if (activeLyrics.length > 0) {
+      var curMs = audio.currentTime * 1000;
+      var activeIndex = -1;
+      for (var i = 0; i < activeLyrics.length; i++) {
+        if (curMs >= activeLyrics[i].timeMs) {
+          activeIndex = i;
+        } else {
+          break;
+        }
+      }
+      if (activeIndex !== -1) {
+        document.querySelectorAll('.p-lyric-line').forEach(function(line, idx) {
+          if (idx === activeIndex) {
+            if (!line.classList.contains('active')) {
+              line.classList.add('active');
+              // Scroll active line to center
+              var containerHeight = lyricsBody.clientHeight;
+              var lineTop = line.offsetTop;
+              var lineHeight = line.clientHeight;
+              lyricsBody.scrollTop = lineTop - containerHeight / 2 + lineHeight / 2;
+            }
+          } else {
+            line.classList.remove('active');
+          }
+        });
+      }
+    }
+  });
+
+  audio.addEventListener('durationchange', function() {
+    var durMin = Math.floor(audio.duration / 60);
+    var durSec = Math.floor(audio.duration % 60);
+    timeTotal.textContent = durMin + ':' + (durSec < 10 ? '0' : '') + durSec;
+  });
+
+  // Seek bar interaction
+  function seek(e) {
+    var r = progBar.getBoundingClientRect();
+    var p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    progFill.style.width = (p * 100) + '%';
+    audio.currentTime = p * (audio.duration || 0);
+  }
+  progBar.addEventListener('mousedown', function(e) {
+    isSeeking = true;
+    seek(e);
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (isSeeking) seek(e);
+  });
+  document.addEventListener('mouseup', function() {
+    isSeeking = false;
+  });
+
+  // Volume control
+  var volBar = document.querySelector('.vol-bar');
+  var volFill = document.querySelector('.vol-fill');
+  var volDot = document.querySelector('.vol-dot');
+  var isChangingVol = false;
+  function changeVolume(e) {
+    var r = volBar.getBoundingClientRect();
+    var p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    volFill.style.width = (p * 100) + '%';
+    volDot.style.left = (p * 100) + '%';
+    audio.volume = p;
+  }
+  volBar.addEventListener('mousedown', function(e) {
+    isChangingVol = true;
+    changeVolume(e);
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (isChangingVol) changeVolume(e);
+  });
+  document.addEventListener('mouseup', function() {
+    isChangingVol = false;
+  });
+
+  // Next/prev button queues
+  var skipNext = document.querySelector('.ctrl-btn:nth-child(4)');
+  var skipPrev = document.querySelector('.ctrl-btn:nth-child(2)');
+  skipNext.addEventListener('click', function() {
+    if (songQueue.length > 0) {
+      queueIndex = (queueIndex + 1) % songQueue.length;
+      playSong(songQueue[queueIndex]);
+    }
+  });
+  skipPrev.addEventListener('click', function() {
+    if (songQueue.length > 0) {
+      queueIndex = (queueIndex - 1 + songQueue.length) % songQueue.length;
+      playSong(songQueue[queueIndex]);
+    }
+  });
+
+  // Open/Close Search
+  searchBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    searchOverlay.classList.add('open');
+    searchInput.focus();
+  });
+  searchClose.addEventListener('click', function(e) {
+    e.stopPropagation();
+    searchOverlay.classList.remove('open');
+  });
+
+  // Search input typing (debounce)
+  var searchTimeout;
+  searchInput.addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    var q = searchInput.value.trim();
+    if (q.length < 2) {
+      searchResults.innerHTML = '';
+      return;
+    }
+    searchTimeout = setTimeout(function() {
+      searchResults.innerHTML = '<div style="text-align:center;color:var(--mute);margin-top:20px;font-size:12px;">Searching...</div>';
+      fetch('/api/search?q=' + encodeURIComponent(q))
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (!data || data.length === 0) {
+            searchResults.innerHTML = '<div style="text-align:center;color:var(--mute);margin-top:20px;font-size:12px;">No results found</div>';
+            return;
+          }
+          searchResults.innerHTML = '';
+          songQueue = data;
+          data.forEach(function(song, idx) {
+            var item = document.createElement('div');
+            item.className = 'p-song-item';
+            item.innerHTML = '<img class="p-song-img" src="' + song.thumbnailUrl + '" />' +
+                             '<div class="p-song-info">' +
+                               '<div class="p-song-title">' + song.title + '</div>' +
+                               '<div class="p-song-artist">' + song.artist + '</div>' +
+                             '</div>' +
+                             '<div class="p-song-dur">' + song.durationText + '</div>';
+            item.addEventListener('click', function(e) {
+              e.stopPropagation();
+              queueIndex = idx;
+              playSong(song);
+              searchOverlay.classList.remove('open');
+            });
+            searchResults.appendChild(item);
+          });
+        })
+        .catch(function(err) {
+          console.error("Search API error", err);
+          searchResults.innerHTML = '<div style="text-align:center;color:var(--mute);margin-top:20px;font-size:12px;">Error fetching results</div>';
+        });
+    }, 400);
+  });
+
+  // Play Song helper
+  function playSong(song) {
+    currentSong = song;
+    
+    // Update player interface
+    document.getElementById('p-album-art').src = song.thumbnailUrl;
+    document.querySelector('.track-name').textContent = song.title;
+    document.querySelector('.track-artist').textContent = song.artist;
+    document.getElementById('p-now-playing-title').textContent = song.title;
+    
+    // Update cover art labels to look beautiful
+    document.querySelector('.pa-label-top').textContent = song.title.toUpperCase().split('').join(' ');
+    document.querySelector('.pa-label-mid').textContent = song.artist.toUpperCase();
+    document.querySelector('.pa-label-mid2').textContent = '';
+    document.querySelector('.pa-label-bot').textContent = 'A N Y F Y  M U S I C';
+
+    // Set audio source
+    audio.src = song.streamUrl;
+    
+    // Reset visualizer bars
+    document.querySelectorAll('.fvb').forEach(function(bar) {
+      bar.style.height = '15%';
+    });
+    
+    // Play
+    initAudio();
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    audio.play().then(function() {
+      playBtn.innerHTML = '&#9646;&#9646;';
+    }).catch(function(e) {
+      console.error("Playback error", e);
+    });
+    
+    // Color extraction
+    applyDominantColor(song.thumbnailUrl);
+    
+    // Load lyrics
+    loadLyrics(song);
+  }
+
+  // Load Lyrics helper
+  function loadLyrics(song) {
+    activeLyrics = [];
+    lyricsLines.innerHTML = '<div class="p-lyrics-empty">Loading lyrics...</div>';
+    document.getElementById('p-lyrics-summary').innerHTML = 'Loading<span class="lyrics-dots"><span>.</span><span>.</span><span>.</span></span>';
+    
+    fetch('/api/lyrics?title=' + encodeURIComponent(song.title) + '&artist=' + encodeURIComponent(song.artist) + '&duration=' + song.durationMs)
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (!data || data.length === 0) {
+          lyricsLines.innerHTML = '<div class="p-lyrics-empty">Lyrics unavailable</div>';
+          document.getElementById('p-lyrics-summary').textContent = 'Unavailable';
+          return;
+        }
+        activeLyrics = data;
+        lyricsLines.innerHTML = '';
+        document.getElementById('p-lyrics-summary').textContent = 'Synced';
+        data.forEach(function(line) {
+          var el = document.createElement('div');
+          el.className = 'p-lyric-line';
+          el.textContent = line.text;
+          el.addEventListener('click', function(e) {
+            e.stopPropagation();
+            audio.currentTime = line.timeMs / 1000;
+          });
+          lyricsLines.appendChild(el);
+        });
+      })
+      .catch(function(err) {
+        console.error("Lyrics error", err);
+        lyricsLines.innerHTML = '<div class="p-lyrics-empty">Could not load lyrics</div>';
+        document.getElementById('p-lyrics-summary').textContent = 'Error';
+      });
+  }
+
+  // Open/Close Lyrics
+  lyricsBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    lyricsOverlay.classList.add('open');
+  });
+  lyricsClose.addEventListener('click', function(e) {
+    e.stopPropagation();
+    lyricsOverlay.classList.remove('open');
+  });
+  
+  // Set default lyrics
+  loadLyrics(currentSong);
+
+  // Apply default dominant color on load
+  applyDominantColor(currentSong.thumbnailUrl);
+  
+  // Let's hook our visualizer bars inside the card
+  (function visualizerLoop() {
+    requestAnimationFrame(visualizerLoop);
+    if (window.anyfyFreqData) {
+      var bars = document.querySelectorAll('.fvb');
+      var len = window.anyfyFreqData.length;
+      bars.forEach(function(bar, idx) {
+        var freqIdx = Math.floor((idx / bars.length) * len);
+        var val = window.anyfyFreqData[freqIdx] || 0;
+        var h = 15 + (val / 255) * 80;
+        bar.style.height = h + '%';
+      });
+    }
+  })();
+  
+  // Expose color extraction globally toThreeJS
+  window.particleTargetColor = null;
+  function applyDominantColor(imgUrl) {
+    var img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = function() {
+      var canvas = document.createElement('canvas');
+      var ctx = canvas.getContext('2d');
+      canvas.width = 10;
+      canvas.height = 10;
+      ctx.drawImage(img, 0, 0, 10, 10);
+      var data = ctx.getImageData(0, 0, 10, 10).data;
+      var r = 0, g = 0, b = 0, count = 0;
+      for (var i = 0; i < data.length; i += 4) {
+        var pr = data[i], pg = data[i+1], pb = data[i+2], pa = data[i+3];
+        if (pa > 200 && (pr+pg+pb)/3 > 30 && (pr+pg+pb)/3 < 225) {
+          r += pr; g += pg; b += pb;
+          count++;
+        }
+      }
+      if (count === 0) {
+        for (var i = 0; i < data.length; i += 4) {
+          r += data[i]; g += data[i+1]; b += data[i+2];
+          count++;
+        }
+      }
+      r = Math.round(r / count);
+      g = Math.round(g / count);
+      b = Math.round(b / count);
+      
+      var glow = 'rgba(' + r + ',' + g + ',' + b + ', 0.45)';
+      var theme = 'rgb(' + r + ',' + g + ',' + b + ')';
+      
+      var p3d = document.getElementById('phone3d');
+      if (p3d) {
+        p3d.style.boxShadow = '0 60px 140px rgba(0,0,0,.85), 0 0 0 7px rgba(255,255,255,.03), inset 0 1px 0 rgba(255,255,255,.08), 0 0 90px ' + glow;
+        p3d.style.borderColor = 'rgba(' + r + ',' + g + ',' + b + ', 0.3)';
+      }
+      var pg = document.querySelector('.phone-glow');
+      if (pg) {
+        pg.style.background = 'radial-gradient(ellipse, ' + 'rgba(' + r + ',' + g + ',' + b + ', 0.35)' + ' 0%, transparent 70%)';
+      }
+      
+      // Update seekbar colors
+      if (progFill) progFill.style.background = theme;
+      if (progDot) {
+        progDot.style.background = theme;
+        progDot.style.boxShadow = '0 0 8px ' + theme;
+      }
+      
+      // Set background particles target color
+      window.particleTargetColor = new THREE.Color(r/255, g/255, b/255);
+    };
+    img.src = imgUrl;
+  }
+})();
+
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#070709;
+  --bg2:#0d0d12;
+  --coral:#ff5c35;
+  --coral2:#ff3d00;
+  --purple:#7b2fff;
+  --blue:#2255ff;
+  --white:#eeece6;
+  --mute:#55545f;
+  --glass:rgba(255,255,255,0.035);
+  --rim:rgba(255,255,255,0.07);
+  --glow:rgba(255,92,53,0.4);
+  --fd:'Syne',sans-serif;
+  --fb:'Space Grotesk',sans-serif;
+  --fm:'Space Mono',monospace;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--white);font-family:var(--fb);-webkit-font-smoothing:antialiased;overflow-x:hidden;cursor:none}
+
+/* ── CUSTOM CURSOR ── */
+#cur{position:fixed;width:12px;height:12px;background:var(--coral);border-radius:50%;pointer-events:none;z-index:99999;transform:translate(-50%,-50%);transition:width .2s,height .2s,background .2s;mix-blend-mode:difference}
+#cur2{position:fixed;width:40px;height:40px;border:1px solid rgba(255,92,53,0.5);border-radius:50%;pointer-events:none;z-index:99998;transform:translate(-50%,-50%);transition:all .12s ease;mix-blend-mode:normal}
+body:has(a:hover) #cur,body:has(button:hover) #cur{width:32px;height:32px;background:var(--coral)}
+
+/* ── NOISE ── */
+body::after{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");pointer-events:none;z-index:9998;opacity:.7}
+
+/* ── CANVAS ── */
+#bgc{position:fixed;inset:0;z-index:0;pointer-events:none}
+
+/* ── NAV ── */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:0 48px;height:68px;display:flex;align-items:center;justify-content:space-between;transition:background .5s,border-color .5s;border-bottom:1px solid transparent}
+nav.s{background:rgba(7,7,9,0.92);backdrop-filter:blur(20px);border-color:var(--rim)}
+.nav-left{display:flex;align-items:center;gap:32px}
+.nav-logo{font-family:var(--fd);font-size:22px;font-weight:800;color:var(--white);text-decoration:none;letter-spacing:-.5px}
+.live-pill{display:flex;align-items:center;gap:6px;background:rgba(255,92,53,0.12);border:1px solid rgba(255,92,53,0.25);border-radius:100px;padding:4px 12px;font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--coral);text-transform:uppercase}
+.live-dot{width:5px;height:5px;border-radius:50%;background:var(--coral);animation:blink 1.2s ease infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.nav-links{display:flex;align-items:center;gap:28px;list-style:none}
+.nav-links a{color:var(--mute);text-decoration:none;font-size:13px;font-weight:500;letter-spacing:.03em;transition:color .2s}
+.nav-links a:hover{color:var(--white)}
+.nav-dl{background:var(--coral);color:#fff;padding:9px 22px;border-radius:100px;font-size:13px;font-weight:700;text-decoration:none;letter-spacing:.02em;transition:all .2s cubic-bezier(.34,1.56,.64,1);box-shadow:0 0 24px rgba(255,92,53,.35)}
+.nav-dl:hover{transform:scale(1.06) translateY(-1px);box-shadow:0 0 40px rgba(255,92,53,.55);color:#fff!important}
+
+/* ── HERO ── */
+#hero{min-height:100vh;display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:0;padding:100px 80px 60px;position:relative;z-index:2;overflow:hidden}
+.hero-left{display:flex;flex-direction:column;align-items:flex-start}
+.hero-eyebrow{display:flex;align-items:center;gap:10px;margin-bottom:36px}
+.hero-tag{font-family:var(--fm);font-size:11px;color:var(--mute);letter-spacing:.18em;text-transform:uppercase}
+.hero-line{width:40px;height:1px;background:var(--mute)}
+.hero-h1{font-family:var(--fd);font-size:clamp(56px,7vw,110px);font-weight:800;line-height:.88;letter-spacing:-3px;margin-bottom:32px}
+.hero-h1 .w1{display:block;color:var(--white)}
+.hero-h1 .w2{display:block;-webkit-text-stroke:2px var(--coral);color:transparent;position:relative}
+.hero-h1 .w2::after{content:attr(data-text);position:absolute;left:0;top:0;color:var(--coral);clip-path:inset(0 100% 0 0);animation:reveal-fill 1.4s 0.6s cubic-bezier(.77,0,.18,1) forwards}
+@keyframes reveal-fill{to{clip-path:inset(0 0% 0 0)}}
+.hero-sub{font-size:16px;color:var(--mute);line-height:1.75;max-width:420px;margin-bottom:52px;font-weight:400}
+.hero-sub strong{color:var(--white);font-weight:600}
+.hero-actions{display:flex;align-items:center;gap:16px}
+.btn-hero{display:inline-flex;align-items:center;gap:12px;padding:16px 36px;border-radius:100px;font-size:15px;font-weight:700;text-decoration:none;position:relative;overflow:hidden;transition:all .25s cubic-bezier(.34,1.56,.64,1)}
+.btn-hero.fill{background:var(--coral);color:#fff;box-shadow:0 0 50px rgba(255,92,53,.35)}
+.btn-hero.fill:hover{transform:scale(1.05) translateY(-2px);box-shadow:0 0 70px rgba(255,92,53,.55)}
+.btn-hero.ghost{border:1px solid var(--rim);color:var(--white);background:var(--glass);backdrop-filter:blur(12px)}
+.btn-hero.ghost:hover{border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.07);transform:translateY(-2px)}
+.hero-stats{display:flex;gap:40px;margin-top:60px;padding-top:48px;border-top:1px solid var(--rim)}
+.hstat-val{font-family:var(--fd);font-size:32px;font-weight:800;color:var(--white)}
+.hstat-val span{color:var(--coral)}
+.hstat-lbl{font-size:12px;color:var(--mute);margin-top:4px;letter-spacing:.05em}
+
+/* ── PHONE MOCKUP (matches screenshot) ── */
+.hero-right{display:flex;justify-content:center;align-items:center;position:relative}
+.phone-scene{perspective:1200px}
+.phone-wrap{animation:phone-float 7s ease-in-out infinite;transform-style:preserve-3d}
+@keyframes phone-float{0%,100%{transform:translateY(0) rotateX(2deg) rotateY(-6deg)}50%{transform:translateY(-22px) rotateX(-1deg) rotateY(4deg)}}
+.phone{width:295px;height:618px;background:#0e0e0e;border-radius:46px;border:1.5px solid rgba(255,255,255,.10);box-shadow:0 60px 140px rgba(0,0,0,.85),0 0 0 7px rgba(255,255,255,.03),inset 0 1px 0 rgba(255,255,255,.08),0 0 80px rgba(255,92,53,.12);overflow:hidden;position:relative;cursor:pointer}
+/* Dynamic island */
+.di{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:110px;height:30px;background:#000;border-radius:20px;z-index:10;display:flex;align-items:center;justify-content:center;gap:8px}
+.di-cam{width:10px;height:10px;border-radius:50%;background:#1a1a1a;border:2px solid #2a2a2a}
+.di-mic{width:4px;height:4px;border-radius:50%;background:#111;position:absolute;right:28px}
+/* Screen content */
+.ps{position:absolute;inset:0;display:flex;flex-direction:column;padding:52px 22px 20px;background:linear-gradient(180deg,#111210 0%,#0c0c0a 100%)}
+/* Header bar */
+.ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.ph-back{font-size:18px;color:rgba(255,255,255,.7);cursor:pointer}
+.ph-title{font-size:15px;font-weight:600;color:var(--white);letter-spacing:.02em}
+.ph-icons{display:flex;gap:16px;color:rgba(255,255,255,.6);font-size:16px}
+/* Album art */
+.pa-wrap{position:relative;margin-bottom:14px}
+.pa{width:100%;aspect-ratio:1;border-radius:14px;background:linear-gradient(135deg,#1d2e20 0%,#162418 30%,#0e1c10 60%,#0a1408 100%);display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.6);position:relative}
+/* Silhouette art - mimics the AFSOS album */
+.pa-art{width:100%;height:100%;position:relative;display:flex;align-items:flex-end;justify-content:space-around;padding:0 24px 20px}
+.silhouette{position:relative;z-index:2}
+.sil-l{width:52px;height:110px;background:var(--coral);clip-path:polygon(35% 0%,65% 0%,70% 12%,80% 18%,80% 35%,70% 38%,72% 55%,85% 62%,90% 75%,80% 80%,72% 68%,68% 80%,60% 100%,40% 100%,32% 80%,28% 68%,20% 80%,10% 75%,15% 62%,28% 55%,30% 38%,20% 35%,20% 18%,30% 12%);filter:drop-shadow(0 4px 12px rgba(255,92,53,.4));transform:scaleX(-1)}
+.sil-r{width:52px;height:110px;background:var(--coral);clip-path:polygon(35% 0%,65% 0%,70% 12%,80% 18%,80% 35%,70% 38%,72% 55%,85% 62%,90% 75%,80% 80%,72% 68%,68% 80%,60% 100%,40% 100%,32% 80%,28% 68%,20% 80%,10% 75%,15% 62%,28% 55%,30% 38%,20% 35%,20% 18%,30% 12%);filter:drop-shadow(0 4px 12px rgba(255,92,53,.4))}
+.pa-label-top{position:absolute;top:20px;left:0;right:0;text-align:center;font-family:var(--fm);font-size:11px;letter-spacing:.22em;color:rgba(255,255,255,.55)}
+.pa-label-mid{position:absolute;bottom:36px;left:20px;font-size:9px;letter-spacing:.12em;color:rgba(255,255,255,.3)}
+.pa-label-mid2{position:absolute;bottom:36px;right:20px;font-size:9px;letter-spacing:.12em;color:rgba(255,255,255,.3)}
+.pa-label-bot{position:absolute;bottom:14px;left:0;right:0;text-align:center;font-family:var(--fm);font-size:9px;letter-spacing:.2em;color:rgba(255,255,255,.3)}
+.pa-glow{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 100%,rgba(255,92,53,.18) 0%,transparent 65%)}
+/* Swipe hint */
+.swipe-hint{text-align:center;font-size:10px;color:rgba(255,255,255,.25);margin-bottom:18px;letter-spacing:.1em}
+/* Track info */
+.track-row{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px}
+.track-name{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--white);letter-spacing:-.3px}
+.track-icons{display:flex;flex-direction:column;gap:10px;color:rgba(255,255,255,.4);font-size:15px}
+.track-icon-heart{color:rgba(255,255,255,.35)}
+.track-artist{font-size:13px;color:rgba(255,255,255,.45);margin-bottom:20px}
+/* Progress */
+.prog-bar{width:100%;height:3px;background:rgba(255,255,255,.12);border-radius:3px;position:relative;margin-bottom:8px;cursor:pointer}
+.prog-fill{position:absolute;left:0;top:0;height:100%;width:5%;background:var(--coral);border-radius:3px;animation:prog-move 180s linear infinite}
+@keyframes prog-move{from{width:1%}to{width:98%}}
+.prog-dot{position:absolute;right:-1px;top:50%;transform:translateY(-50%);width:12px;height:12px;border-radius:50%;background:var(--coral);box-shadow:0 0 8px var(--coral)}
+.prog-times{display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,.3);font-family:var(--fm);margin-bottom:20px}
+/* Controls */
+.ctrl{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding:0 4px}
+.ctrl-btn{font-size:20px;color:rgba(255,255,255,.45);cursor:pointer;transition:color .2s}
+.ctrl-btn:hover{color:var(--white)}
+.ctrl-play{width:58px;height:58px;background:var(--white);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;color:#000;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,.4);transition:transform .2s cubic-bezier(.34,1.56,.64,1)}
+.ctrl-play:hover{transform:scale(1.08)}
+/* Volume */
+.vol-row{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.vol-icon{font-size:14px;color:rgba(255,255,255,.3)}
+.vol-bar{flex:1;height:3px;background:rgba(255,255,255,.12);border-radius:3px;position:relative}
+.vol-fill{width:55%;height:100%;background:var(--white);border-radius:3px}
+.vol-dot{position:absolute;left:55%;top:50%;transform:translate(-50%,-50%);width:12px;height:12px;border-radius:50%;background:var(--white)}
+.vol-extra{display:flex;gap:14px;color:rgba(255,255,255,.3);font-size:14px}
+/* Lyrics */
+.lyrics-row{display:flex;align-items:center;justify-content:space-between;padding-top:14px;border-top:1px solid rgba(255,255,255,.06)}
+.lyrics-lbl{font-size:13px;color:var(--white);font-weight:500}
+.lyrics-load{font-size:11px;color:rgba(255,255,255,.3);display:flex;align-items:center;gap:6px}
+.lyrics-dots span{animation:ldot .9s ease infinite;display:inline-block}
+.lyrics-dots span:nth-child(2){animation-delay:.15s}
+.lyrics-dots span:nth-child(3){animation-delay:.3s}
+@keyframes ldot{0%,100%{opacity:.3;transform:translateY(0)}50%{opacity:1;transform:translateY(-2px)}}
+/* Phone ambient glow */
+.phone-glow{position:absolute;bottom:-80px;left:50%;transform:translateX(-50%);width:320px;height:200px;background:radial-gradient(ellipse,rgba(255,92,53,.3) 0%,transparent 70%);filter:blur(30px);pointer-events:none;border-radius:50%}
+
+/* ── MARQUEE TICKER ── */
+.ticker{border-top:1px solid var(--rim);border-bottom:1px solid var(--rim);padding:14px 0;overflow:hidden;position:relative;z-index:2;background:rgba(255,255,255,.01)}
+.ticker-inner{display:flex;gap:0;animation:tick 25s linear infinite;width:max-content}
+.ticker-item{display:flex;align-items:center;gap:12px;padding:0 32px;font-family:var(--fm);font-size:12px;color:var(--mute);white-space:nowrap;letter-spacing:.08em}
+.ticker-item .dot{color:var(--coral)}
+@keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* ── FEATURES ── */
+#features{padding:160px 80px;position:relative;z-index:2}
+.feat-header{max-width:600px;margin-bottom:100px}
+.feat-num{font-family:var(--fm);font-size:11px;color:var(--coral);letter-spacing:.2em;margin-bottom:20px}
+.feat-h2{font-family:var(--fd);font-size:clamp(40px,5vw,72px);font-weight:800;line-height:.95;letter-spacing:-2px;color:var(--white);margin-bottom:24px}
+.feat-h2 em{font-style:normal;-webkit-text-stroke:1.5px var(--mute);color:transparent}
+.feat-sub{font-size:16px;color:var(--mute);line-height:1.7;max-width:440px}
+.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+.fc{background:var(--glass);border:1px solid var(--rim);padding:44px 40px;position:relative;overflow:hidden;transition:all .4s cubic-bezier(.23,1,.32,1);cursor:default}
+.fc::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at var(--mx,50%) var(--my,50%),rgba(255,92,53,.07) 0%,transparent 55%);opacity:0;transition:opacity .3s}
+.fc:hover::before{opacity:1}
+.fc:hover{border-color:rgba(255,92,53,.25);transform:translateY(-3px);box-shadow:0 24px 60px rgba(0,0,0,.3),0 0 40px rgba(255,92,53,.06)}
+.fc.wide{grid-column:span 2}
+.fc-num{font-family:var(--fm);font-size:11px;color:rgba(255,92,53,.5);letter-spacing:.15em;margin-bottom:32px}
+.fc-icon{font-size:36px;margin-bottom:20px;display:block}
+.fc-title{font-family:var(--fd);font-size:22px;font-weight:700;color:var(--white);margin-bottom:12px;letter-spacing:-.3px}
+.fc-desc{font-size:14px;color:var(--mute);line-height:1.75}
+.fc-tag{display:inline-block;margin-top:16px;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--coral);border:1px solid rgba(255,92,53,.25);border-radius:100px;padding:4px 12px}
+/* Big viz card */
+.fc-viz{display:flex;align-items:flex-end;gap:3px;height:80px;margin-top:28px}
+.fvb{border-radius:3px 3px 0 0;background:linear-gradient(to top,var(--coral),rgba(255,92,53,.2));animation:fvb var(--d,.7s) ease-in-out infinite alternate}
+@keyframes fvb{from{height:15%}to{height:var(--h,80%)}}
+
+/* ── COMPARISON ── */
+#compare{padding:120px 80px;position:relative;z-index:2}
+.cmp-wrap{max-width:1000px;margin:0 auto}
+.cmp-title{font-family:var(--fd);font-size:clamp(38px,5vw,72px);font-weight:800;line-height:.95;letter-spacing:-2px;color:var(--white);margin-bottom:80px}
+.cmp-title span{color:var(--coral)}
+.cmp-table{width:100%;border-collapse:collapse}
+.cmp-table th{padding:16px 28px;text-align:left;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);border-bottom:1px solid var(--rim)}
+.cmp-table th:nth-child(2){color:var(--coral);font-size:14px}
+.cmp-table td{padding:20px 28px;font-size:14px;border-bottom:1px solid rgba(255,255,255,.03);color:var(--mute);transition:background .2s}
+.cmp-table tr:hover td{background:rgba(255,255,255,.015)}
+.cmp-table td:first-child{color:var(--white);font-weight:500}
+.cmp-table td.a{color:#00e87a;font-weight:600}
+.cmp-table td.n{color:#ff4455}
+.cmp-table td.m{color:#888}
+
+/* ── HOW ── */
+#how{padding:140px 80px;position:relative;z-index:2;overflow:hidden}
+.how-line{position:absolute;top:220px;left:80px;right:80px;height:1px;background:linear-gradient(90deg,transparent,var(--rim),var(--coral),var(--rim),transparent);opacity:.5}
+.how-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:60px;position:relative}
+.how-step{text-align:center}
+.how-n{width:72px;height:72px;border-radius:50%;background:radial-gradient(135deg,rgba(255,92,53,.15),rgba(139,0,255,.08));border:1px solid rgba(255,92,53,.3);display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-size:24px;font-weight:800;color:var(--coral);margin:0 auto 28px;position:relative;z-index:2;box-shadow:0 0 40px rgba(255,92,53,.12)}
+.how-t{font-family:var(--fd);font-size:19px;font-weight:700;color:var(--white);margin-bottom:12px}
+.how-d{font-size:14px;color:var(--mute);line-height:1.7}
+
+/* ── REVIEWS ── */
+#reviews{padding:120px 0;overflow:hidden;position:relative;z-index:2}
+.rev-header{padding:0 80px;margin-bottom:60px}
+.rev-track{display:flex;gap:20px;animation:marquee 28s linear infinite;width:max-content}
+.rev-track:hover{animation-play-state:paused}
+@keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.rcard{background:var(--glass);border:1px solid var(--rim);border-radius:20px;padding:28px;width:300px;flex-shrink:0;transition:border-color .3s}
+.rcard:hover{border-color:rgba(255,92,53,.25)}
+.rcard-stars{color:#ffd700;font-size:12px;letter-spacing:2px;margin-bottom:14px}
+.rcard-text{font-size:14px;color:rgba(255,255,255,.55);line-height:1.7;margin-bottom:20px}
+.rcard-user{display:flex;align-items:center;gap:10px}
+.rcard-av{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--coral),var(--purple));display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#fff;font-family:var(--fd)}
+.rcard-name{font-size:13px;font-weight:600;color:var(--white)}
+.rcard-handle{font-size:11px;color:var(--mute)}
+
+/* ── DOWNLOAD ── */
+#dl{padding:160px 80px;position:relative;z-index:2;text-align:center;overflow:hidden}
+.dl-aura{position:absolute;width:900px;height:700px;border-radius:50%;background:radial-gradient(ellipse,rgba(255,92,53,.12) 0%,rgba(123,47,255,.06) 50%,transparent 70%);top:50%;left:50%;transform:translate(-50%,-50%);filter:blur(100px);pointer-events:none;animation:aura 6s ease-in-out infinite alternate}
+@keyframes aura{0%{transform:translate(-50%,-50%) scale(1);opacity:.8}100%{transform:translate(-50%,-48%) scale(1.15);opacity:1}}
+.dl-label{font-family:var(--fm);font-size:11px;color:var(--coral);letter-spacing:.2em;text-transform:uppercase;margin-bottom:20px;display:block}
+.dl-h{font-family:var(--fd);font-size:clamp(48px,8vw,110px);font-weight:800;line-height:.88;letter-spacing:-3px;margin-bottom:32px;position:relative;z-index:2}
+.dl-h .o{-webkit-text-stroke:2px rgba(255,255,255,.15);color:transparent}
+.dl-h .f{color:var(--white)}
+.dl-sub{font-size:17px;color:var(--mute);margin-bottom:60px;line-height:1.7;position:relative;z-index:2}
+.dl-btns{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;margin-bottom:44px;position:relative;z-index:2}
+.dl-apk{display:inline-flex;align-items:center;gap:14px;background:var(--coral);color:#fff;padding:20px 48px;border-radius:100px;font-size:17px;font-weight:700;text-decoration:none;box-shadow:0 0 60px rgba(255,92,53,.4),0 16px 60px rgba(255,92,53,.2);transition:all .3s cubic-bezier(.34,1.56,.64,1);position:relative;overflow:hidden}
+.dl-apk::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.12),transparent);border-radius:inherit}
+.dl-apk:hover{transform:scale(1.06) translateY(-4px);box-shadow:0 0 90px rgba(255,92,53,.55),0 24px 80px rgba(255,92,53,.3)}
+.dl-gh{display:inline-flex;align-items:center;gap:14px;background:var(--glass);border:1px solid var(--rim);color:var(--white);padding:20px 40px;border-radius:100px;font-size:16px;font-weight:600;text-decoration:none;backdrop-filter:blur(12px);transition:all .25s}
+.dl-gh:hover{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.15);transform:translateY(-3px)}
+.dl-meta{display:flex;justify-content:center;gap:28px;flex-wrap:wrap;position:relative;z-index:2}
+.dl-m{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mute)}
+.dl-m-dot{color:#00e87a;font-size:8px}
+
+/* ── FOOTER ── */
+footer{padding:60px 80px 40px;border-top:1px solid var(--rim);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px;position:relative;z-index:2}
+.ft-logo{font-family:var(--fd);font-size:20px;font-weight:800;color:var(--white)}
+.ft-copy{font-family:var(--fm);font-size:11px;color:var(--mute);letter-spacing:.05em}
+.ft-links{display:flex;gap:28px}
+.ft-links a{font-size:13px;color:var(--mute);text-decoration:none;transition:color .2s}
+.ft-links a:hover{color:var(--white)}
+
+/* ── REVEAL ── */
+.rv{opacity:0;transform:translateY(32px);transition:opacity .7s cubic-bezier(.23,1,.32,1),transform .7s cubic-bezier(.23,1,.32,1)}
+.rv.on{opacity:1;transform:none}
+.rv2{opacity:0;transform:translateY(20px);transition:opacity .5s,transform .5s}
+.rv2.on{opacity:1;transform:none}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:rgba(255,92,53,.4);border-radius:4px}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px){
+  nav{padding:0 24px}
+  #hero{grid-template-columns:1fr;padding:100px 24px 60px;text-align:center}
+  .hero-left{align-items:center}
+  .hero-right{margin-top:60px}
+  #features,#compare,#how,#dl,footer{padding-left:24px;padding-right:24px}
+  .feat-grid{grid-template-columns:1fr}
+  .fc.wide{grid-column:span 1}
+  .how-steps{grid-template-columns:1fr}
+  .how-line{display:none}
+  .nav-links{display:none}
+  footer{flex-direction:column;text-align:center}
+  .cmp-table th,.cmp-table td{padding:14px 10px;font-size:12px}
+}
+
+/* ── INTERACTIVE APP LAYER ── */
+#p-album-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  z-index: 1;
+  display: block;
+  transition: opacity 0.3s;
+}
+.pa-label-top, .pa-label-mid, .pa-label-mid2, .pa-label-bot {
+  z-index: 2 !important;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.4);
+}
+.prog-fill {
+  animation: none !important;
+  width: 0%;
+}
+.p-search {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #111210 0%, #0c0c0a 100%);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  padding: 52px 18px 20px;
+  transform: translateY(100%);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 46px;
+}
+.p-search.open {
+  transform: translateY(0);
+}
+.p-search-hdr {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.p-search-close {
+  font-size: 24px;
+  color: var(--white);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0 4px;
+}
+.p-search-input-wrap {
+  position: relative;
+  flex: 1;
+}
+.p-search-input {
+  width: 100%;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 100px;
+  padding: 10px 16px;
+  color: var(--white);
+  font-family: var(--fb);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+.p-search-input:focus {
+  border-color: var(--coral);
+  background: rgba(255,255,255,0.1);
+}
+.p-search-results {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 20px;
+  scrollbar-width: none;
+}
+.p-search-results::-webkit-scrollbar {
+  display: none;
+}
+.p-song-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid transparent;
+  transition: background 0.2s, border-color 0.2s;
+}
+.p-song-item:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.04);
+}
+.p-song-img {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: #222;
+  object-fit: cover;
+}
+.p-song-info {
+  flex: 1;
+  min-width: 0;
+}
+.p-song-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--white);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.p-song-artist {
+  font-size: 11px;
+  color: var(--mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+.p-song-dur {
+  font-size: 11px;
+  color: var(--mute);
+  font-family: var(--fm);
+}
+.p-lyrics {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 10, 12, 0.95);
+  backdrop-filter: blur(25px);
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  padding: 52px 20px 20px;
+  transform: translateY(100%);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 46px;
+}
+.p-lyrics.open {
+  transform: translateY(0);
+}
+.p-lyrics-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.p-lyrics-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--white);
+}
+.p-lyrics-close {
+  font-size: 24px;
+  color: var(--white);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+.p-lyrics-body {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+  mask-image: linear-gradient(to bottom, transparent 0%, white 15%, white 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, white 15%, white 85%, transparent 100%);
+  padding: 40px 0;
+}
+.p-lyrics-body::-webkit-scrollbar {
+  display: none;
+}
+.p-lyric-line {
+  font-size: 17px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.3);
+  padding: 12px 0;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: color 0.3s, transform 0.3s;
+  transform-origin: left center;
+}
+.p-lyric-line.active {
+  color: var(--white);
+  transform: scale(1.08);
+  text-shadow: 0 0 15px rgba(255,255,255,0.3);
+}
+.p-lyrics-empty {
+  text-align: center;
+  color: var(--mute);
+  font-size: 14px;
+  margin-top: 100px;
+}
+</style>
+
 </head>
 <body>
-<div class="cursor-glow" id="cursorGlow"></div>
-<canvas id="bg-canvas"></canvas>
 
-<nav id="navbar">
-  <a href="#" class="nav-logo">Anyfy</a>
+<div id="cur"></div>
+<div id="cur2"></div>
+<canvas id="bgc"></canvas>
+
+<!-- NAV -->
+<nav id="nav">
+  <div class="nav-left">
+    <a href="#" class="nav-logo">Anyfy</a>
+    <div class="live-pill"><span class="live-dot"></span>v2.0 live</div>
+  </div>
   <ul class="nav-links">
     <li><a href="#features">Features</a></li>
-    <li><a href="#comparison">Compare</a></li>
-    <li><a href="#how-it-works">How It Works</a></li>
-    <li><a href="#download" class="nav-cta">Download APK</a></li>
+    <li><a href="#compare">vs Spotify</a></li>
+    <li><a href="#how">Setup</a></li>
+    <li><a href="#reviews">Reviews</a></li>
   </ul>
+  <a href="/app-release.apk" download="Anyfy-v2.0.apk" class="nav-dl">&#8595; Get APK</a>
 </nav>
 
+<!-- HERO -->
 <section id="hero">
-  <div class="hero-aura"></div>
-  <div>
-    <div class="hero-badge"><span class="badge-dot"></span>Now available &middot; Free forever</div>
-    <h1 class="hero-title">
-      <span class="line-1">Music</span>
-      <span class="line-2">Unchained.</span>
-    </h1>
-    <p class="hero-subtitle">Anyfy is the Android music player that Spotify doesn&apos;t want you to have. Stream millions of tracks, ad-free, with AI-powered discovery and a UI that feels like the future.</p>
-    <div class="hero-ctas">
-      <a href="#download" class="btn-primary"><span>&#11015;</span> Download Free APK</a>
-      <a href="#features" class="btn-secondary"><span>&#10022;</span> Explore Features</a>
+  <div class="hero-left">
+    <div class="hero-eyebrow rv">
+      <div class="hero-line"></div>
+      <span class="hero-tag">Android Music Player &mdash; Free Forever</span>
     </div>
-    <div class="hero-phone-wrap">
-      <div class="phone-3d" id="phone3d">
-        <div class="phone-notch"></div>
-        <div class="phone-screen">
-          <div class="phone-album">&#127925;</div>
-          <div class="phone-track-name">Midnight Frequency</div>
-          <div class="phone-track-artist">The Neon Collective</div>
-          <div class="phone-waveform">
-            <div class="phone-bar" style="--dur:0.6s;--h:35px"></div>
-            <div class="phone-bar" style="--dur:0.9s;--h:28px"></div>
-            <div class="phone-bar" style="--dur:0.5s;--h:40px"></div>
-            <div class="phone-bar" style="--dur:0.8s;--h:20px"></div>
-            <div class="phone-bar" style="--dur:0.7s;--h:36px"></div>
-            <div class="phone-bar" style="--dur:1.1s;--h:25px"></div>
-            <div class="phone-bar" style="--dur:0.6s;--h:38px"></div>
-            <div class="phone-bar" style="--dur:0.9s;--h:18px"></div>
-            <div class="phone-bar" style="--dur:0.5s;--h:32px"></div>
-            <div class="phone-bar" style="--dur:0.7s;--h:28px"></div>
-            <div class="phone-bar" style="--dur:1.0s;--h:40px"></div>
-            <div class="phone-bar" style="--dur:0.8s;--h:22px"></div>
-          </div>
-          <div class="phone-controls">
-            <span class="ctrl-btn">&#9194;</span>
-            <div class="ctrl-btn play">&#9654;</div>
-            <span class="ctrl-btn">&#9193;</span>
-          </div>
-          <div class="phone-progress"><div class="phone-progress-fill"></div></div>
-        </div>
-        <div class="phone-glow-floor"></div>
+    <h1 class="hero-h1 rv">
+      <span class="w1">The only</span>
+      <span class="w2" data-text="player">player</span>
+      <span class="w1">you need.</span>
+    </h1>
+    <p class="hero-sub rv">
+      Anyfy streams <strong>millions of tracks</strong> with zero ads, AI-powered discovery,
+      and a UI your friends will ask about. <strong>Free. Always.</strong>
+    </p>
+    <div class="hero-actions rv">
+      <a href="/app-release.apk" download="Anyfy-v2.0.apk" class="btn-hero fill">
+        <span>&#8595;</span> Download APK &mdash; Free
+      </a>
+      <a href="#features" class="btn-hero ghost">
+        <span>&#10022;</span> See features
+      </a>
+    </div>
+    <div class="hero-stats rv">
+      <div>
+        <div class="hstat-val"><span id="c1">0</span>M+</div>
+        <div class="hstat-lbl">Tracks Available</div>
+      </div>
+      <div>
+        <div class="hstat-val" style="color:var(--coral)">&#8734;</div>
+        <div class="hstat-lbl">Ads Served</div>
+      </div>
+      <div>
+        <div class="hstat-val"><span id="c2">0</span>kbps</div>
+        <div class="hstat-lbl">Audio Quality</div>
       </div>
     </div>
   </div>
-  <div class="scroll-hint" aria-hidden="true">
-    <span>Scroll</span>
-    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 4v12M5 11l5 5 5-5"/></svg>
+
+  <!-- PHONE -->
+  <div class="hero-right">
+    <div class="phone-scene">
+      <div class="phone-wrap" id="phonewrap">
+        <div class="phone" id="phone3d">
+          <div class="di">
+            <div class="di-cam"></div>
+            <div class="di-mic"></div>
+          </div>
+          <div class="ps">
+            <!-- Header -->
+            <div class="ph">
+              <span class="ph-back">&#8249;</span>
+              <span class="ph-title" id="p-now-playing-title">Now Playing</span>
+              <div class="ph-icons">
+                <span id="p-search-btn" style="cursor:pointer;font-size:18px;line-height:1;">&#x1F50D;</span>
+                <span>&#9881;</span>
+              </div>
+            </div>
+            <!-- Album Art -->
+            <div class="pa-wrap">
+              <div class="pa">
+                <img id="p-album-art" src="https://c.saavncdn.com/773/Afsos-Punjabi-2025-20250129053900-500x500.jpg" />
+                <div class="pa-art" style="display:none;">
+                  <div class="silhouette"><div class="sil-l"></div></div>
+                  <div class="silhouette"><div class="sil-r"></div></div>
+                </div>
+                <div class="pa-label-top">A F S O S</div>
+                <div class="pa-label-mid">ANUV JAIN</div>
+                <div class="pa-label-mid2">AP DHILLON</div>
+                <div class="pa-label-bot">X I I I</div>
+                <div class="pa-glow"></div>
+              </div>
+            </div>
+            <div class="swipe-hint">&larr; swipe to change &rarr;</div>
+            <!-- Track info -->
+            <div class="track-row">
+              <div class="track-name">Afsos</div>
+              <div class="track-icons">
+                <span class="track-icon-heart">&#9825;</span>
+                <span style="font-size:12px">&#8679;</span>
+                <span style="font-size:12px">&#43;</span>
+              </div>
+            </div>
+            <div class="track-artist">Anuv Jain, AP Dhillon</div>
+            <!-- Progress -->
+            <div class="prog-bar">
+              <div class="prog-fill"><div class="prog-dot"></div></div>
+            </div>
+            <div class="prog-times"><span>0:02</span><span>3:11</span></div>
+            <!-- Controls -->
+            <div class="ctrl">
+              <span class="ctrl-btn">&#10227;</span>
+              <span class="ctrl-btn">&#9198;</span>
+              <div class="ctrl-play">&#9646;&#9646;</div>
+              <span class="ctrl-btn">&#9197;</span>
+              <span class="ctrl-btn">&#9654;&#9654;&#9654;</span>
+            </div>
+            <!-- Volume -->
+            <div class="vol-row">
+              <span class="vol-icon">&#128264;</span>
+              <div class="vol-bar">
+                <div class="vol-fill"></div>
+                <div class="vol-dot"></div>
+              </div>
+              <div class="vol-extra">
+                <span>&#128266;</span>
+                <span>&#10687;</span>
+                <span>&#9836;</span>
+              </div>
+            </div>
+            <!-- Lyrics -->
+            <div class="lyrics-row" id="p-lyrics-btn" style="cursor:pointer;">
+              <span class="lyrics-lbl">Lyrics</span>
+              <div class="lyrics-load" id="p-lyrics-summary">Tap to view</div>
+            </div>
+          </div>
+          <!-- SEARCH OVERLAY -->
+          <div class="p-search" id="p-search-overlay">
+            <div class="p-search-hdr">
+              <button class="p-search-close" id="p-search-close">&larr;</button>
+              <div class="p-search-input-wrap">
+                <input class="p-search-input" id="p-search-input" type="text" placeholder="Search any song..." />
+              </div>
+            </div>
+            <div class="p-search-results" id="p-search-results"></div>
+          </div>
+          <!-- LYRICS DRAWER -->
+          <div class="p-lyrics" id="p-lyrics-overlay">
+            <div class="p-lyrics-hdr">
+              <span class="p-lyrics-title">Lyrics</span>
+              <button class="p-lyrics-close" id="p-lyrics-close">&times;</button>
+            </div>
+            <div class="p-lyrics-body" id="p-lyrics-body">
+              <div class="p-lyrics-lines" id="p-lyrics-lines"></div>
+            </div>
+          </div>
+          <div class="phone-glow"></div>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
-<div id="stats">
-  <div class="stat reveal"><div class="stat-num" id="cnt1">0</div><div class="stat-label">Million+ Tracks</div></div>
-  <div class="stat reveal"><div class="stat-num" id="cnt2">0</div><div class="stat-label">Ads. Zero.</div></div>
-  <div class="stat reveal"><div class="stat-num" id="cnt3">0</div><div class="stat-label">kbps Quality</div></div>
-  <div class="stat reveal"><div class="stat-num" id="cnt4">0</div><div class="stat-label">Free Forever</div></div>
+<!-- TICKER -->
+<div class="ticker">
+  <div class="ticker-inner">
+    <span class="ticker-item"><span class="dot">&#9679;</span> Zero ads &mdash; ever</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> AI music discovery</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> Self-healing streams</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> 320kbps audio</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> Dynamic album aura</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> Open source</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> SponsorBlock built-in</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> 10-band EQ</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> AI chat assistant</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> Android 7.0+ ready</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> Zero ads &mdash; ever</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> AI music discovery</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> Self-healing streams</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> 320kbps audio</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> Dynamic album aura</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> Open source</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> SponsorBlock built-in</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> 10-band EQ</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> AI chat assistant</span>
+    <span class="ticker-item"><span class="dot">&#9679;</span> Android 7.0+ ready</span>
+  </div>
 </div>
 
+<!-- FEATURES -->
 <section id="features">
-  <div class="section-label reveal">What makes Anyfy different</div>
-  <h2 class="section-title reveal">Built for the <span class="accent">obsessed.</span></h2>
-  <p class="section-subtitle reveal">Every feature engineered for audio perfection. No compromises, no paywalls &mdash; just pure music.</p>
-  <div class="features-grid">
-    <div class="feat-card card-large reveal">
-      <div class="feat-body">
-        <div class="feat-icon coral">&#127897;</div>
-        <h3 class="feat-name">AI-Powered Discovery</h3>
-        <p class="feat-desc">Our on-device neural engine analyses your listening DNA &mdash; tempo, mood, key, genre &mdash; and serves tracks you didn&apos;t know you needed. No cloud. No data harvesting.</p>
+  <div class="feat-header rv">
+    <div class="feat-num">01 &mdash; CAPABILITIES</div>
+    <h2 class="feat-h2">Built different.<br><em>Actually.</em></h2>
+    <p class="feat-sub">Not a reskin. Not a wrapper. Every system re-engineered from scratch for the listener who gives a damn.</p>
+  </div>
+  <div class="feat-grid">
+
+    <div class="fc wide rv">
+      <div class="fc-num">F&#8202;&#8202;01</div>
+      <span class="fc-icon">&#127897;</span>
+      <div class="fc-title">AI Discovery Engine</div>
+      <div class="fc-desc">On-device neural model reads your listening DNA &mdash; BPM, mood, harmonic key, artist graph &mdash; and queues what you needed before you knew you needed it. No cloud. No account. No creep factor.</div>
+      <div class="fc-viz">
+        <div class="fvb" style="width:7px;--d:.45s;--h:80%"></div>
+        <div class="fvb" style="width:7px;--d:.7s;--h:55%"></div>
+        <div class="fvb" style="width:7px;--d:.5s;--h:95%"></div>
+        <div class="fvb" style="width:7px;--d:.9s;--h:65%"></div>
+        <div class="fvb" style="width:7px;--d:.55s;--h:75%"></div>
+        <div class="fvb" style="width:7px;--d:.8s;--h:90%"></div>
+        <div class="fvb" style="width:7px;--d:.6s;--h:50%"></div>
+        <div class="fvb" style="width:7px;--d:1.0s;--h:85%"></div>
+        <div class="fvb" style="width:7px;--d:.5s;--h:70%"></div>
+        <div class="fvb" style="width:7px;--d:.75s;--h:60%"></div>
+        <div class="fvb" style="width:7px;--d:.65s;--h:88%"></div>
+        <div class="fvb" style="width:7px;--d:.85s;--h:45%"></div>
       </div>
-      <div class="feat-visual">
-        <div class="feat-visual-bars">
-          <div class="fvb" style="--d:0.5s;--h:70%"></div>
-          <div class="fvb" style="--d:0.9s;--h:90%"></div>
-          <div class="fvb" style="--d:0.6s;--h:50%"></div>
-          <div class="fvb" style="--d:1.1s;--h:80%"></div>
-          <div class="fvb" style="--d:0.7s;--h:60%"></div>
-          <div class="fvb" style="--d:0.8s;--h:95%"></div>
-          <div class="fvb" style="--d:0.5s;--h:65%"></div>
-          <div class="fvb" style="--d:1.0s;--h:75%"></div>
-          <div class="fvb" style="--d:0.6s;--h:85%"></div>
-          <div class="fvb" style="--d:0.9s;--h:55%"></div>
-        </div>
-      </div>
+      <span class="fc-tag">On-device &bull; Private</span>
     </div>
-    <div class="feat-card reveal"><div class="feat-icon purple">&#127760;</div><h3 class="feat-name">Self-Healing Streams</h3><p class="feat-desc">Multi-source fallback &mdash; Cobalt, Invidious, JioSaavn &mdash; so your music never stops. Zero buffering experience.</p></div>
-    <div class="feat-card reveal"><div class="feat-icon coral">&#128263;</div><h3 class="feat-name">Zero Ads. Forever.</h3><p class="feat-desc">Not &quot;ad-free with premium.&quot; Actually free, actually no ads, actually yours. We don&apos;t sell your data either.</p></div>
-    <div class="feat-card reveal"><div class="feat-icon gold">&#127898;</div><h3 class="feat-name">10-Band Equalizer</h3><p class="feat-desc">Studio-grade EQ with bass boost, surround simulation, and preset profiles. Tune your sound to your ears.</p></div>
-    <div class="feat-card reveal"><div class="feat-icon blue">&#9889;</div><h3 class="feat-name">Instant Playback</h3><p class="feat-desc">Sub-300ms stream resolution with 512KB intelligent cache-warming. Tap a song and it plays. No spinners.</p></div>
-    <div class="feat-card reveal"><div class="feat-icon green">&#128241;</div><h3 class="feat-name">Dynamic Aura UI</h3><p class="feat-desc">Album art morphs the entire interface in real-time &mdash; colors, gradients, glow halos. Transforms with every track.</p></div>
-    <div class="feat-card reveal"><div class="feat-icon pink">&#129302;</div><h3 class="feat-name">AI Chat Assistant</h3><p class="feat-desc">Ask your music anything. &quot;Play something melancholy but hopeful at 120bpm.&quot; Powered by on-device intelligence.</p></div>
-    <div class="feat-card reveal"><div class="feat-icon purple">&#127925;</div><h3 class="feat-name">SponsorBlock</h3><p class="feat-desc">Auto-skips sponsor segments, intros, and outros in YouTube-sourced audio. Pure content, always.</p></div>
+
+    <div class="fc rv">
+      <div class="fc-num">F&#8202;&#8202;02</div>
+      <span class="fc-icon">&#9889;</span>
+      <div class="fc-title">Self-Healing Streams</div>
+      <div class="fc-desc">Cobalt &rarr; Invidious &rarr; JioSaavn fallback chain. 512KB smart cache-warm. If one source dies, the next one is already loaded. Sub-300ms from tap to playback.</div>
+      <span class="fc-tag">Never buffers</span>
+    </div>
+
+    <div class="fc rv">
+      <div class="fc-num">F&#8202;&#8202;03</div>
+      <span class="fc-icon">&#127925;</span>
+      <div class="fc-title">Dynamic Aura UI</div>
+      <div class="fc-desc">Album art color-extracts in real time. The entire interface — backgrounds, gradients, glow halos — morphs with each track. Your phone becomes the album.</div>
+      <span class="fc-tag">Real-time</span>
+    </div>
+
+    <div class="fc rv">
+      <div class="fc-num">F&#8202;&#8202;04</div>
+      <span class="fc-icon">&#127898;</span>
+      <div class="fc-title">10-Band Studio EQ</div>
+      <div class="fc-desc">Precision EQ with bass boost, surround simulation, and custom presets. Not the fake EQ other apps ship. A real one, tuned by people who care about audio.</div>
+      <span class="fc-tag">Studio grade</span>
+    </div>
+
+    <div class="fc rv">
+      <div class="fc-num">F&#8202;&#8202;05</div>
+      <span class="fc-icon">&#128263;</span>
+      <div class="fc-title">Literally Zero Ads</div>
+      <div class="fc-desc">No ads. No "premium" tier. No subscription. No data sold. Free means free &mdash; not "free with interruptions." Radical concept, apparently.</div>
+      <span class="fc-tag">Forever free</span>
+    </div>
+
+    <div class="fc rv">
+      <div class="fc-num">F&#8202;&#8202;06</div>
+      <span class="fc-icon">&#129302;</span>
+      <div class="fc-title">AI Chat Interface</div>
+      <div class="fc-desc">"Play something melancholy but hopeful, Indian indie, around 90bpm." It understands. Powered by on-device inference. No API keys. No rate limits.</div>
+      <span class="fc-tag">On-device AI</span>
+    </div>
+
   </div>
 </section>
 
-<section id="comparison">
-  <div class="comparison-wrap">
-    <div class="section-label reveal">Anyfy vs the rest</div>
-    <h2 class="section-title reveal">We didn&apos;t <span class="accent">come to play.</span></h2>
-    <p class="section-subtitle reveal">Side by side, there&apos;s no contest. Anyfy delivers what the others charge for &mdash; for free.</p>
-    <table class="compare-table reveal">
-      <thead><tr><th>Feature</th><th>&#9889; Anyfy</th><th>Spotify</th><th>YT Music</th><th>Apple Music</th></tr></thead>
+<!-- COMPARISON -->
+<section id="compare">
+  <div class="cmp-wrap">
+    <h2 class="cmp-title rv">Anyfy vs<br><span>everyone else.</span></h2>
+    <table class="cmp-table rv">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>&#9889; Anyfy</th>
+          <th>Spotify</th>
+          <th>YT Music</th>
+          <th>Apple Music</th>
+        </tr>
+      </thead>
       <tbody>
-        <tr><td>Ad-free streaming</td><td class="anyfy">&#10003; Always</td><td class="no">&#10007; Paid</td><td class="no">&#10007; Paid</td><td class="no">&#10007; Paid</td></tr>
-        <tr><td>100% Free</td><td class="anyfy">&#10003;</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="no">&#10007;</td></tr>
-        <tr><td>AI Music Discovery</td><td class="anyfy">&#10003; On-device</td><td class="yes">&#10003; Cloud</td><td class="no">~ Limited</td><td class="no">~ Limited</td></tr>
-        <tr><td>Multi-source Fallback</td><td class="anyfy">&#10003;</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="no">&#10007;</td></tr>
-        <tr><td>Dynamic Album UI</td><td class="anyfy">&#10003; Real-time</td><td class="no">~ Basic</td><td class="no">~ Basic</td><td class="no">~ Basic</td></tr>
-        <tr><td>320kbps Audio</td><td class="anyfy">&#10003; Free</td><td class="no">&#10007; Paid</td><td class="no">&#10007; Paid</td><td class="yes">&#10003;</td></tr>
-        <tr><td>Open Source</td><td class="anyfy">&#10003;</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="no">&#10007;</td></tr>
-        <tr><td>Privacy (no data harvest)</td><td class="anyfy">&#10003;</td><td class="no">&#10007;</td><td class="no">&#10007;</td><td class="no">&#10007;</td></tr>
+        <tr><td>Ad-free</td><td class="a">&#10003; Always</td><td class="n">&#10007; Paid</td><td class="n">&#10007; Paid</td><td class="n">&#10007; Paid</td></tr>
+        <tr><td>Completely free</td><td class="a">&#10003;</td><td class="n">&#10007;</td><td class="n">&#10007;</td><td class="n">&#10007;</td></tr>
+        <tr><td>On-device AI</td><td class="a">&#10003;</td><td class="m">Cloud only</td><td class="n">&#10007;</td><td class="n">&#10007;</td></tr>
+        <tr><td>Multi-source fallback</td><td class="a">&#10003;</td><td class="n">&#10007;</td><td class="n">&#10007;</td><td class="n">&#10007;</td></tr>
+        <tr><td>Dynamic album UI</td><td class="a">&#10003; Real-time</td><td class="m">Basic</td><td class="m">Basic</td><td class="m">Basic</td></tr>
+        <tr><td>320kbps (free)</td><td class="a">&#10003;</td><td class="n">&#10007; Paid</td><td class="n">&#10007; Paid</td><td class="a">&#10003;</td></tr>
+        <tr><td>Open source</td><td class="a">&#10003;</td><td class="n">&#10007;</td><td class="n">&#10007;</td><td class="n">&#10007;</td></tr>
+        <tr><td>No data harvesting</td><td class="a">&#10003;</td><td class="n">&#10007;</td><td class="n">&#10007;</td><td class="m">Partial</td></tr>
       </tbody>
     </table>
   </div>
 </section>
 
-<section id="how-it-works">
-  <div class="section-label reveal">Simple as it gets</div>
-  <h2 class="section-title reveal">Up and running in <span class="accent">60 seconds.</span></h2>
-  <div class="steps-grid">
-    <div class="step reveal"><div class="step-num">01</div><h3 class="step-title">Download the APK</h3><p class="step-desc">Grab the latest release directly. No Play Store gatekeeping, no account required. One tap, done.</p></div>
-    <div class="step reveal"><div class="step-num">02</div><h3 class="step-title">Allow Unknown Sources</h3><p class="step-desc">Android will ask once. Tap &quot;Install anyway.&quot; We&apos;re not malware &mdash; we&apos;re just better than what Google approved.</p></div>
-    <div class="step reveal"><div class="step-num">03</div><h3 class="step-title">Play. Vibe. Repeat.</h3><p class="step-desc">Search any track, hit play, and let the AI take over. Your perfect soundtrack is three taps away.</p></div>
+<!-- HOW IT WORKS -->
+<section id="how">
+  <div class="feat-num rv" style="margin-bottom:24px">03 &mdash; SETUP</div>
+  <h2 class="feat-h2 rv" style="margin-bottom:100px;max-width:500px">Live in<br>60 seconds.</h2>
+  <div class="how-line"></div>
+  <div class="how-steps">
+    <div class="how-step rv">
+      <div class="how-n">01</div>
+      <div class="how-t">Download the APK</div>
+      <div class="how-d">No Play Store. No account. No permission theatre. Just download and run. The way software should work.</div>
+    </div>
+    <div class="how-step rv">
+      <div class="how-n">02</div>
+      <div class="how-t">Allow Unknown Sources</div>
+      <div class="how-d">Android asks once. Tap allow. We're not malware &mdash; we're just better than what Google decided to approve.</div>
+    </div>
+    <div class="how-step rv">
+      <div class="how-n">03</div>
+      <div class="how-t">Play anything.</div>
+      <div class="how-d">Search. Tap. It plays. The AI learns you over time. By week two, you won't need to search anymore.</div>
+    </div>
   </div>
 </section>
 
-<section id="testimonials">
-  <div class="testimonials-header">
-    <div class="section-label reveal">Real humans, real reactions</div>
-    <h2 class="section-title reveal">They said what <span class="accent">we thought.</span></h2>
+<!-- REVIEWS -->
+<section id="reviews">
+  <div class="rev-header">
+    <div class="feat-num rv">04 &mdash; WHAT PEOPLE SAY</div>
+    <h2 class="feat-h2 rv" style="max-width:480px">Uninstalled<br>Spotify. Again.</h2>
   </div>
-  <div class="testimonial-track">
-    <div class="tcard"><div class="tcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="tcard-text">&quot;I deleted Spotify the same day I installed Anyfy. There&apos;s no going back. The UI alone is worth it.&quot;</p><div class="tcard-author"><div class="tcard-avatar">&#128100;</div><div><div class="tcard-name">Rohan K.</div><div class="tcard-handle">@rohanbeats</div></div></div></div>
-    <div class="tcard"><div class="tcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="tcard-text">&quot;The AI discovery is genuinely scary good. It knew I wanted lofi jazz before I did.&quot;</p><div class="tcard-author"><div class="tcard-avatar">&#129489;</div><div><div class="tcard-name">Priya S.</div><div class="tcard-handle">@priyamusic</div></div></div></div>
-    <div class="tcard"><div class="tcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="tcard-text">&quot;Free. No ads. 320kbps. Multi-source streams. What planet is this from?&quot;</p><div class="tcard-author"><div class="tcard-avatar">&#128104;</div><div><div class="tcard-name">Alex M.</div><div class="tcard-handle">@alexaudiophile</div></div></div></div>
-    <div class="tcard"><div class="tcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="tcard-text">&quot;The dynamic aura that changes with album art is the most beautiful thing I&apos;ve seen on Android.&quot;</p><div class="tcard-author"><div class="tcard-avatar">&#128105;</div><div><div class="tcard-name">Sara T.</div><div class="tcard-handle">@saradesigns</div></div></div></div>
-    <div class="tcard"><div class="tcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="tcard-text">&quot;Been using Anyfy for 3 months. My Spotify account is gathering dust. This is the real deal.&quot;</p><div class="tcard-author"><div class="tcard-avatar">&#129492;</div><div><div class="tcard-name">Dev P.</div><div class="tcard-handle">@devlistens</div></div></div></div>
-    <div class="tcard"><div class="tcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="tcard-text">&quot;I&apos;m an audio engineer and even I&apos;m impressed by the EQ. Smooth, precise, powerful.&quot;</p><div class="tcard-author"><div class="tcard-avatar">&#127911;</div><div><div class="tcard-name">Marcus L.</div><div class="tcard-handle">@marcusaudio</div></div></div></div>
-    <div class="tcard"><div class="tcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="tcard-text">&quot;I deleted Spotify the same day I installed Anyfy. There&apos;s no going back. The UI alone is worth it.&quot;</p><div class="tcard-author"><div class="tcard-avatar">&#128100;</div><div><div class="tcard-name">Rohan K.</div><div class="tcard-handle">@rohanbeats</div></div></div></div>
-    <div class="tcard"><div class="tcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="tcard-text">&quot;The AI discovery is genuinely scary good. It knew I wanted lofi jazz before I did.&quot;</p><div class="tcard-author"><div class="tcard-avatar">&#129489;</div><div><div class="tcard-name">Priya S.</div><div class="tcard-handle">@priyamusic</div></div></div></div>
-    <div class="tcard"><div class="tcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="tcard-text">&quot;Free. No ads. 320kbps. Multi-source streams. What planet is this from?&quot;</p><div class="tcard-author"><div class="tcard-avatar">&#128104;</div><div><div class="tcard-name">Alex M.</div><div class="tcard-handle">@alexaudiophile</div></div></div></div>
-    <div class="tcard"><div class="tcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="tcard-text">&quot;The dynamic aura that changes with album art is the most beautiful thing I&apos;ve seen on Android.&quot;</p><div class="tcard-author"><div class="tcard-avatar">&#128105;</div><div><div class="tcard-name">Sara T.</div><div class="tcard-handle">@saradesigns</div></div></div></div>
-    <div class="tcard"><div class="tcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="tcard-text">&quot;Been using Anyfy for 3 months. My Spotify account is gathering dust. This is the real deal.&quot;</p><div class="tcard-author"><div class="tcard-avatar">&#129492;</div><div><div class="tcard-name">Dev P.</div><div class="tcard-handle">@devlistens</div></div></div></div>
-    <div class="tcard"><div class="tcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="tcard-text">&quot;I&apos;m an audio engineer and even I&apos;m impressed by the EQ. Smooth, precise, powerful.&quot;</p><div class="tcard-author"><div class="tcard-avatar">&#127911;</div><div><div class="tcard-name">Marcus L.</div><div class="tcard-handle">@marcusaudio</div></div></div></div>
+  <div class="rev-track">
+    <div class="rcard"><div class="rcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="rcard-text">"Deleted Spotify the same day. UI is ridiculous. Album art morphing with the whole interface? Who let this ship?"</p><div class="rcard-user"><div class="rcard-av">R</div><div><div class="rcard-name">Rohan K.</div><div class="rcard-handle">@rohanbeats</div></div></div></div>
+    <div class="rcard"><div class="rcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="rcard-text">"AI discovery is actually scary. Queued Afsos before I even thought of it. On-device. No cloud. HOW."</p><div class="rcard-user"><div class="rcard-av">P</div><div><div class="rcard-name">Priya S.</div><div class="rcard-handle">@priyamusic</div></div></div></div>
+    <div class="rcard"><div class="rcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="rcard-text">"Free. 320kbps. No ads. Multi-source. Am I hallucinating? This is better than what I pay $12 a month for."</p><div class="rcard-user"><div class="rcard-av">A</div><div><div class="rcard-name">Alex M.</div><div class="rcard-handle">@alexaudiophile</div></div></div></div>
+    <div class="rcard"><div class="rcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="rcard-text">"EQ is actually legit. I'm a mixing engineer. This is not the fake EQ that ships with most players. Real."</p><div class="rcard-user"><div class="rcard-av">M</div><div><div class="rcard-name">Marcus L.</div><div class="rcard-handle">@marcusaudio</div></div></div></div>
+    <div class="rcard"><div class="rcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="rcard-text">"Stream never buffered once in 3 months. One source goes down, it switches instantly. You don't even notice."</p><div class="rcard-user"><div class="rcard-av">D</div><div><div class="rcard-name">Dev P.</div><div class="rcard-handle">@devlistens</div></div></div></div>
+    <div class="rcard"><div class="rcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="rcard-text">"I asked it to 'play something sad but cinematic, no lyrics.' It nailed it. First try. I was shook."</p><div class="rcard-user"><div class="rcard-av">S</div><div><div class="rcard-name">Sara T.</div><div class="rcard-handle">@saradesigns</div></div></div></div>
+    <!-- duplicate for loop -->
+    <div class="rcard"><div class="rcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="rcard-text">"Deleted Spotify the same day. UI is ridiculous. Album art morphing with the whole interface? Who let this ship?"</p><div class="rcard-user"><div class="rcard-av">R</div><div><div class="rcard-name">Rohan K.</div><div class="rcard-handle">@rohanbeats</div></div></div></div>
+    <div class="rcard"><div class="rcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="rcard-text">"AI discovery is actually scary. Queued Afsos before I even thought of it. On-device. No cloud. HOW."</p><div class="rcard-user"><div class="rcard-av">P</div><div><div class="rcard-name">Priya S.</div><div class="rcard-handle">@priyamusic</div></div></div></div>
+    <div class="rcard"><div class="rcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="rcard-text">"Free. 320kbps. No ads. Multi-source. Am I hallucinating? This is better than what I pay $12 a month for."</p><div class="rcard-user"><div class="rcard-av">A</div><div><div class="rcard-name">Alex M.</div><div class="rcard-handle">@alexaudiophile</div></div></div></div>
+    <div class="rcard"><div class="rcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="rcard-text">"EQ is actually legit. I'm a mixing engineer. This is not the fake EQ that ships with most players. Real."</p><div class="rcard-user"><div class="rcard-av">M</div><div><div class="rcard-name">Marcus L.</div><div class="rcard-handle">@marcusaudio</div></div></div></div>
+    <div class="rcard"><div class="rcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="rcard-text">"Stream never buffered once in 3 months. One source goes down, it switches instantly. You don't even notice."</p><div class="rcard-user"><div class="rcard-av">D</div><div><div class="rcard-name">Dev P.</div><div class="rcard-handle">@devlistens</div></div></div></div>
+    <div class="rcard"><div class="rcard-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div><p class="rcard-text">"I asked it to 'play something sad but cinematic, no lyrics.' It nailed it. First try. I was shook."</p><div class="rcard-user"><div class="rcard-av">S</div><div><div class="rcard-name">Sara T.</div><div class="rcard-handle">@saradesigns</div></div></div></div>
   </div>
 </section>
 
-<section id="download">
+<!-- DOWNLOAD -->
+<section id="dl">
   <div class="dl-aura"></div>
-  <div class="dl-content">
-    <div style="text-align:center;margin-bottom:20px;" class="reveal">
-      <span style="display:inline-block;background:rgba(255,92,53,0.18);border:1px solid rgba(255,92,53,0.3);border-radius:100px;padding:6px 20px;font-size:12px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--coral);">&#128293; Latest Release &middot; v2.0</span>
-    </div>
-    <h2 class="dl-title reveal"><span class="big">Your music.</span><br><span class="glow">Your rules.</span></h2>
-    <p class="dl-subtitle reveal">Free. Fast. Forever. Download Anyfy and hear the difference.</p>
-    <div class="dl-buttons reveal">
-      <a href="/app-release.apk" download="Anyfy-v2.0.apk" class="btn-download apk" id="apk-download-btn">
-        <span class="btn-download-icon">&#128241;</span>
-        <span class="btn-download-label"><span>Download for Android</span><span>Free APK &middot; v2.0</span></span>
-      </a>
-      <a href="https://github.com/YOUR_USERNAME/anyfy" class="btn-download github" target="_blank" rel="noopener">
-        <span class="btn-download-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg></span>
-        <span class="btn-download-label"><span>View on GitHub</span><span>Open Source</span></span>
-      </a>
-    </div>
-    <div class="dl-badges reveal">
-      <div class="dl-badge"><span class="dl-badge-dot">&#9679;</span> No account needed</div>
-      <div class="dl-badge"><span class="dl-badge-dot">&#9679;</span> No ads, ever</div>
-      <div class="dl-badge"><span class="dl-badge-dot">&#9679;</span> Android 7.0+</div>
-      <div class="dl-badge"><span class="dl-badge-dot">&#9679;</span> ~11 MB APK</div>
-      <div class="dl-badge"><span class="dl-badge-dot">&#9679;</span> Open Source</div>
-    </div>
+  <span class="dl-label rv">05 &mdash; Get it now</span>
+  <h2 class="dl-h rv">
+    <span class="o">Your</span> <span class="f">music.</span><br>
+    <span class="o">Your</span> <span class="f">rules.</span>
+  </h2>
+  <p class="dl-sub rv">Free. Fast. Forever. No strings. No account. Just music.</p>
+  <div class="dl-btns rv">
+    <a href="/app-release.apk" download="Anyfy-v2.0.apk" class="dl-apk">
+      <span style="font-size:22px">&#128241;</span>
+      <span style="text-align:left"><span style="display:block;font-size:11px;opacity:.7;font-weight:400;font-family:'Space Mono',monospace;letter-spacing:.05em">Download for Android</span><span style="font-size:18px">Free APK &bull; v2.0</span></span>
+    </a>
+    <a href="https://github.com/takaisbjehei/anyfy-web" class="dl-gh" target="_blank" rel="noopener">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+      <span style="text-align:left"><span style="display:block;font-size:11px;opacity:.6;font-family:'Space Mono',monospace">Source code</span><span style="font-size:16px">View on GitHub</span></span>
+    </a>
+  </div>
+  <div class="dl-meta rv">
+    <div class="dl-m"><span class="dl-m-dot">&#9679;</span> No account needed</div>
+    <div class="dl-m"><span class="dl-m-dot">&#9679;</span> No ads, ever</div>
+    <div class="dl-m"><span class="dl-m-dot">&#9679;</span> Android 7.0+</div>
+    <div class="dl-m"><span class="dl-m-dot">&#9679;</span> ~9 MB</div>
+    <div class="dl-m"><span class="dl-m-dot">&#9679;</span> Open source</div>
   </div>
 </section>
 
+<!-- FOOTER -->
 <footer>
-  <div class="footer-logo">Anyfy</div>
-  <p class="footer-copy">&#169; 2026 Anyfy &mdash; Made with &#128293; and zero VC funding.</p>
-  <div class="footer-links">
-    <a href="https://github.com/YOUR_USERNAME/anyfy" target="_blank" rel="noopener">GitHub</a>
+  <div class="ft-logo">Anyfy</div>
+  <p class="ft-copy">&#169; 2026 &mdash; BUILT WITH &#128293; BY @TAKAISBJEHEI</p>
+  <div class="ft-links">
+    <a href="https://github.com/takaisbjehei/anyfy-web" target="_blank" rel="noopener">GitHub</a>
     <a href="#features">Features</a>
-    <a href="#download">Download</a>
+    <a href="#dl">Download</a>
   </div>
 </footer>
 
 <script>
+/* THREE.JS PARTICLES */
 (function(){
-  var canvas=document.getElementById('bg-canvas');
-  var renderer=new THREE.WebGLRenderer({canvas:canvas,alpha:true,antialias:true});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-  renderer.setSize(window.innerWidth,window.innerHeight);
-  var scene=new THREE.Scene();
-  var camera=new THREE.PerspectiveCamera(75,window.innerWidth/window.innerHeight,0.1,1000);
-  camera.position.z=50;
-  var count=2000;
-  var geo=new THREE.BufferGeometry();
-  var positions=new Float32Array(count*3);
-  var colors=new Float32Array(count*3);
-  var coral=new THREE.Color('#ff5c35');
-  var purple=new THREE.Color('#8b00ff');
-  var blue=new THREE.Color('#3366ff');
-  for(var i=0;i<count;i++){
-    positions[i*3]=(Math.random()-0.5)*200;
-    positions[i*3+1]=(Math.random()-0.5)*120;
-    positions[i*3+2]=(Math.random()-0.5)*100-20;
-    var t=Math.random();
-    var c=t<0.4?coral:t<0.7?purple:blue;
-    colors[i*3]=c.r;colors[i*3+1]=c.g;colors[i*3+2]=c.b;
+  var c=document.getElementById('bgc'),r=new THREE.WebGLRenderer({canvas:c,alpha:true,antialias:true});
+  r.setPixelRatio(Math.min(devicePixelRatio,2));r.setSize(innerWidth,innerHeight);
+  var s=new THREE.Scene(),cam=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,1000);
+  cam.position.z=55;
+  var N=1800,g=new THREE.BufferGeometry(),p=new Float32Array(N*3),col=new Float32Array(N*3);
+  var colors=[new THREE.Color('#ff5c35'),new THREE.Color('#7b2fff'),new THREE.Color('#2255ff'),new THREE.Color('#ff8c42')];
+  for(var i=0;i<N;i++){
+    p[i*3]=(Math.random()-.5)*220;p[i*3+1]=(Math.random()-.5)*130;p[i*3+2]=(Math.random()-.5)*110-15;
+    var cc=colors[Math.floor(Math.random()*colors.length)];
+    col[i*3]=cc.r;col[i*3+1]=cc.g;col[i*3+2]=cc.b;
   }
-  geo.setAttribute('position',new THREE.BufferAttribute(positions,3));
-  geo.setAttribute('color',new THREE.BufferAttribute(colors,3));
-  var mat=new THREE.PointsMaterial({size:0.55,vertexColors:true,transparent:true,opacity:0.5,sizeAttenuation:true,blending:THREE.AdditiveBlending,depthWrite:false});
-  var particles=new THREE.Points(geo,mat);
-  scene.add(particles);
-  var mouseX=0,mouseY=0;
-  document.addEventListener('mousemove',function(e){mouseX=(e.clientX/window.innerWidth-0.5)*2;mouseY=(e.clientY/window.innerHeight-0.5)*2;});
-  var tick=0;
-  function animate(){
-    requestAnimationFrame(animate);
-    tick+=0.005;
-    particles.rotation.y=tick*0.03+mouseX*0.04;
-    particles.rotation.x=mouseY*0.025;
-    var pos=geo.attributes.position.array;
-    for(var i=0;i<count;i++) pos[i*3+1]+=Math.sin(tick+i*0.5)*0.004;
-    geo.attributes.position.needsUpdate=true;
-    camera.position.x+=(mouseX*3-camera.position.x)*0.02;
-    camera.position.y+=(-mouseY*3-camera.position.y)*0.02;
-    renderer.render(scene,camera);
-  }
-  animate();
-  window.addEventListener('resize',function(){camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});
+  g.setAttribute('position',new THREE.BufferAttribute(p,3));
+  g.setAttribute('color',new THREE.BufferAttribute(col,3));
+  var mat=new THREE.PointsMaterial({size:.5,vertexColors:true,transparent:true,opacity:.45,blending:THREE.AdditiveBlending,depthWrite:false});
+  var pts=new THREE.Points(g,mat);s.add(pts);
+  var mx=0,my=0;
+  document.addEventListener('mousemove',function(e){mx=(e.clientX/innerWidth-.5)*2;my=(e.clientY/innerHeight-.5)*2;});
+  var t=0;
+  (function loop(){
+    requestAnimationFrame(loop);t+=.004;
+    var freqAvg = 0;
+    if (window.anyfyAnalyser && window.anyfyFreqData) {
+      window.anyfyAnalyser.getByteFrequencyData(window.anyfyFreqData);
+      var sum = 0;
+      for (var i = 0; i < window.anyfyFreqData.length; i++) {
+        sum += window.anyfyFreqData[i];
+      }
+      freqAvg = sum / window.anyfyFreqData.length;
+    }
+    
+    pts.rotation.y=t*(0.025 + freqAvg * 0.0003)+mx*.035;
+    pts.rotation.x=my*.02 + Math.sin(t)*(freqAvg * 0.0001);
+    var pa=g.attributes.position.array;
+    var amp = 0.003 + freqAvg * 0.00015;
+    for(var i=0;i<N;i++) pa[i*3+1]+=Math.sin(t+i*.6)*amp;
+    g.attributes.position.needsUpdate=true;
+    
+    if (window.particleTargetColor) {
+      var colArr = g.attributes.color.array;
+      for (var i = 0; i < N; i++) {
+        colArr[i*3] += (window.particleTargetColor.r - colArr[i*3]) * 0.03;
+        colArr[i*3+1] += (window.particleTargetColor.g - colArr[i*3+1]) * 0.03;
+        colArr[i*3+2] += (window.particleTargetColor.b - colArr[i*3+2]) * 0.03;
+      }
+      g.attributes.color.needsUpdate = true;
+    }
+    
+    cam.position.x+=(mx*4-cam.position.x)*.018;
+    cam.position.y+=(-my*4-cam.position.y)*.018;
+    r.render(s,cam);
+  })();
+  window.addEventListener('resize',function(){cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();r.setSize(innerWidth,innerHeight);});
 })();
 
-var cursorGlow=document.getElementById('cursorGlow');
-document.addEventListener('mousemove',function(e){cursorGlow.style.left=e.clientX+'px';cursorGlow.style.top=e.clientY+'px';});
+/* CUSTOM CURSOR */
+var cur=document.getElementById('cur'),cur2=document.getElementById('cur2');
+var cx=0,cy=0,c2x=0,c2y=0;
+document.addEventListener('mousemove',function(e){cx=e.clientX;cy=e.clientY;cur.style.left=cx+'px';cur.style.top=cy+'px';});
+(function loop(){requestAnimationFrame(loop);c2x+=(cx-c2x)*.14;c2y+=(cy-c2y)*.14;cur2.style.left=c2x+'px';cur2.style.top=c2y+'px';})();
 
-var navbar=document.getElementById('navbar');
-window.addEventListener('scroll',function(){navbar.classList.toggle('scrolled',window.scrollY>40);});
+/* NAV SCROLL */
+window.addEventListener('scroll',function(){document.getElementById('nav').classList.toggle('s',scrollY>50);});
 
-document.querySelectorAll('.feat-card').forEach(function(card){
-  card.addEventListener('mousemove',function(e){
-    var r=card.getBoundingClientRect();
-    card.style.setProperty('--mx',((e.clientX-r.left)/r.width*100)+'%');
-    card.style.setProperty('--my',((e.clientY-r.top)/r.height*100)+'%');
+/* CARD MOUSE GLOW */
+document.querySelectorAll('.fc').forEach(function(el){
+  el.addEventListener('mousemove',function(e){
+    var r=el.getBoundingClientRect();
+    el.style.setProperty('--mx',((e.clientX-r.left)/r.width*100)+'%');
+    el.style.setProperty('--my',((e.clientY-r.top)/r.height*100)+'%');
   });
 });
 
-var phone3d=document.getElementById('phone3d');
+/* PHONE 3D TILT & PULSE */
+var ph=document.getElementById('phonewrap');
+var rxTarget = 0, ryTarget = 0, rxCurrent = 0, ryCurrent = 0;
 document.addEventListener('mousemove',function(e){
-  if(!phone3d)return;
-  var rect=phone3d.getBoundingClientRect();
-  var cx=rect.left+rect.width/2;
-  var cy=rect.top+rect.height/2;
-  var dx=(e.clientX-cx)/window.innerWidth;
-  var dy=(e.clientY-cy)/window.innerHeight;
-  phone3d.style.transform='perspective(1000px) rotateX('+(-dy*18+4)+'deg) rotateY('+(dx*18-8)+'deg)';
+  rxTarget=(e.clientY/innerHeight-.5)*(-22);
+  ryTarget=(e.clientX/innerWidth-.5)*(22);
 });
-
-var observer=new IntersectionObserver(function(entries){
-  entries.forEach(function(entry,i){
-    if(entry.isIntersecting){
-      setTimeout(function(){entry.target.classList.add('visible');},i*80);
-      observer.unobserve(entry.target);
-    }
-  });
-},{threshold:0.12});
-document.querySelectorAll('.reveal,.feat-card,.step').forEach(function(el){observer.observe(el);});
-
-function animateNum(el,target,suffix){
-  var start=performance.now();
-  var dur=1800;
-  function upd(now){
-    var p=Math.min((now-start)/dur,1);
-    var ease=1-Math.pow(1-p,3);
-    el.textContent=Math.round(ease*target)+suffix;
-    if(p<1)requestAnimationFrame(upd);
+(function phoneLoop(){
+  requestAnimationFrame(phoneLoop);
+  if(!ph)return;
+  rxCurrent+=(rxTarget-rxCurrent)*.1;
+  ryCurrent+=(ryTarget-ryCurrent)*.1;
+  var scale=1;
+  if(window.anyfyFreqData){
+    var bassSum=0;
+    for(var i=0;i<6;i++) bassSum += window.anyfyFreqData[i]||0;
+    scale=1+(bassSum/6/255)*.04;
   }
-  requestAnimationFrame(upd);
-}
-var statsObs=new IntersectionObserver(function(entries){
-  entries.forEach(function(entry){
-    if(entry.isIntersecting){
-      animateNum(document.getElementById('cnt1'),100,'M+');
-      animateNum(document.getElementById('cnt2'),0,'');
-      document.getElementById('cnt2').textContent='0';
-      animateNum(document.getElementById('cnt3'),320,'kbps');
-      animateNum(document.getElementById('cnt4'),100,'%');
-      statsObs.unobserve(entry.target);
+  ph.style.transform='rotateX('+rxCurrent+'deg) rotateY('+ryCurrent+'deg) scale('+scale+')';
+})();
+
+/* SCROLL REVEAL */
+var obs=new IntersectionObserver(function(ens){
+  ens.forEach(function(en,i){
+    if(en.isIntersecting){
+      setTimeout(function(){en.target.classList.add('on');},i*70);
+      obs.unobserve(en.target);
     }
   });
-},{threshold:0.5});
-var statsEl=document.getElementById('stats');
-if(statsEl)statsObs.observe(statsEl);
+},{threshold:.1});
+document.querySelectorAll('.rv,.rv2').forEach(function(el){obs.observe(el);});
 
-document.querySelectorAll('.btn-primary,.btn-download').forEach(function(btn){
-  btn.addEventListener('click',function(e){
-    var ripple=document.createElement('span');
-    var rect=this.getBoundingClientRect();
-    ripple.style.cssText='position:absolute;width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,0.35);pointer-events:none;left:'+(e.clientX-rect.left-5)+'px;top:'+(e.clientY-rect.top-5)+'px;transform:scale(0);animation:ripple-expand 0.6s ease forwards;';
-    this.appendChild(ripple);
-    setTimeout(function(){ripple.remove();},700);
+/* COUNTER ANIM */
+function cnt(el,to,sfx){
+  var st=performance.now(),dur=1600;
+  (function u(now){
+    var p=Math.min((now-st)/dur,1),ease=1-Math.pow(1-p,3);
+    el.textContent=Math.round(ease*to);
+    if(p<1)requestAnimationFrame(u);
+    else el.textContent=to+sfx;
+  })(st);
+}
+var statsObs=new IntersectionObserver(function(ens){
+  ens.forEach(function(en){
+    if(en.isIntersecting){
+      cnt(document.getElementById('c1'),100,'');
+      cnt(document.getElementById('c2'),320,'');
+      statsObs.unobserve(en.target);
+    }
   });
-});
-var s=document.createElement('style');
-s.textContent='@keyframes ripple-expand{to{transform:scale(30);opacity:0;}}';
-document.head.appendChild(s);
+},{threshold:.5});
+var hs=document.querySelector('.hero-stats');
+if(hs)statsObs.observe(hs);
 
+/* SMOOTH SCROLL */
 document.querySelectorAll('a[href^="#"]').forEach(function(a){
   a.addEventListener('click',function(e){
-    var target=document.querySelector(a.getAttribute('href'));
-    if(target){e.preventDefault();target.scrollIntoView({behavior:'smooth',block:'start'});}
+    var t=document.querySelector(a.getAttribute('href'));
+    if(t){e.preventDefault();t.scrollIntoView({behavior:'smooth',block:'start'});}
   });
 });
+
+/* RIPPLE */
+document.querySelectorAll('.btn-hero,.dl-apk,.nav-dl').forEach(function(btn){
+  btn.addEventListener('click',function(e){
+    var rp=document.createElement('span'),r=this.getBoundingClientRect();
+    rp.style.cssText='position:absolute;width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.3);pointer-events:none;left:'+(e.clientX-r.left-5)+'px;top:'+(e.clientY-r.top-5)+'px;transform:scale(0);animation:rpe .55s ease forwards;';
+    this.appendChild(rp);setTimeout(function(){rp.remove();},600);
+  });
+});
+var rs=document.createElement('style');rs.textContent='@keyframes rpe{to{transform:scale(28);opacity:0;}}';
+document.head.appendChild(rs);
+
+/* AUDIO SYSTEM & INTERACTION */
+(function() {
+  var audio = document.createElement('audio');
+  audio.id = 'p-audio';
+  audio.crossOrigin = 'anonymous';
+  document.body.appendChild(audio);
+
+  var playBtn = document.querySelector('.ctrl-play');
+  var progBar = document.querySelector('.prog-bar');
+  var progFill = document.querySelector('.prog-fill');
+  var progDot = document.querySelector('.prog-dot');
+  var timeCur = document.querySelector('.prog-times span:first-child');
+  var timeTotal = document.querySelector('.prog-times span:last-child');
+  
+  var searchBtn = document.getElementById('p-search-btn');
+  var searchClose = document.getElementById('p-search-close');
+  var searchOverlay = document.getElementById('p-search-overlay');
+  var searchInput = document.getElementById('p-search-input');
+  var searchResults = document.getElementById('p-search-results');
+  
+  var lyricsBtn = document.getElementById('p-lyrics-btn');
+  var lyricsClose = document.getElementById('p-lyrics-close');
+  var lyricsOverlay = document.getElementById('p-lyrics-overlay');
+  var lyricsLines = document.getElementById('p-lyrics-lines');
+  var lyricsBody = document.getElementById('p-lyrics-body');
+  
+  var currentSong = {
+    id: "default_afsos",
+    title: "Afsos",
+    artist: "Anuv Jain, AP Dhillon",
+    thumbnailUrl: "https://c.saavncdn.com/773/Afsos-Punjabi-2025-20250129053900-500x500.jpg",
+    streamUrl: "https://aac.saavncdn.com/773/a05bddf58f9158b522b7d782c77612ba_320.mp4",
+    durationMs: 191000
+  };
+  
+  var activeLyrics = [];
+  var songQueue = [];
+  var queueIndex = 0;
+  
+  // Set default audio src
+  audio.src = currentSong.streamUrl;
+  
+  // Web Audio setup
+  var audioCtx, analyser, sourceNode;
+  function initAudio() {
+    if (audioCtx) return;
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      sourceNode = audioCtx.createMediaElementSource(audio);
+      sourceNode.connect(analyser);
+      analyser.connect(audioCtx.destination);
+      window.anyfyAnalyser = analyser;
+      window.anyfyFreqData = new Uint8Array(analyser.frequencyBinCount);
+    } catch(e) {
+      console.error("Web Audio API failed", e);
+    }
+  }
+
+  // Play/Pause toggle
+  playBtn.addEventListener('click', function() {
+    initAudio();
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    if (audio.paused) {
+      audio.play().then(function() {
+        playBtn.innerHTML = '&#9646;&#9646;';
+      }).catch(function(e) {
+        console.error("Playback failed", e);
+      });
+    } else {
+      audio.pause();
+      playBtn.innerHTML = '&#9654;';
+    }
+  });
+
+  // Time & progress update
+  var isSeeking = false;
+  audio.addEventListener('timeupdate', function() {
+    if (isSeeking) return;
+    var p = audio.currentTime / (audio.duration || 1);
+    progFill.style.width = (p * 100) + '%';
+    
+    var curMin = Math.floor(audio.currentTime / 60);
+    var curSec = Math.floor(audio.currentTime % 60);
+    timeCur.textContent = curMin + ':' + (curSec < 10 ? '0' : '') + curSec;
+    
+    // Sync lyrics scroll
+    if (activeLyrics.length > 0) {
+      var curMs = audio.currentTime * 1000;
+      var activeIndex = -1;
+      for (var i = 0; i < activeLyrics.length; i++) {
+        if (curMs >= activeLyrics[i].timeMs) {
+          activeIndex = i;
+        } else {
+          break;
+        }
+      }
+      if (activeIndex !== -1) {
+        document.querySelectorAll('.p-lyric-line').forEach(function(line, idx) {
+          if (idx === activeIndex) {
+            if (!line.classList.contains('active')) {
+              line.classList.add('active');
+              // Scroll active line to center
+              var containerHeight = lyricsBody.clientHeight;
+              var lineTop = line.offsetTop;
+              var lineHeight = line.clientHeight;
+              lyricsBody.scrollTop = lineTop - containerHeight / 2 + lineHeight / 2;
+            }
+          } else {
+            line.classList.remove('active');
+          }
+        });
+      }
+    }
+  });
+
+  audio.addEventListener('durationchange', function() {
+    var durMin = Math.floor(audio.duration / 60);
+    var durSec = Math.floor(audio.duration % 60);
+    timeTotal.textContent = durMin + ':' + (durSec < 10 ? '0' : '') + durSec;
+  });
+
+  // Seek bar interaction
+  function seek(e) {
+    var r = progBar.getBoundingClientRect();
+    var p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    progFill.style.width = (p * 100) + '%';
+    audio.currentTime = p * (audio.duration || 0);
+  }
+  progBar.addEventListener('mousedown', function(e) {
+    isSeeking = true;
+    seek(e);
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (isSeeking) seek(e);
+  });
+  document.addEventListener('mouseup', function() {
+    isSeeking = false;
+  });
+
+  // Volume control
+  var volBar = document.querySelector('.vol-bar');
+  var volFill = document.querySelector('.vol-fill');
+  var volDot = document.querySelector('.vol-dot');
+  var isChangingVol = false;
+  function changeVolume(e) {
+    var r = volBar.getBoundingClientRect();
+    var p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    volFill.style.width = (p * 100) + '%';
+    volDot.style.left = (p * 100) + '%';
+    audio.volume = p;
+  }
+  volBar.addEventListener('mousedown', function(e) {
+    isChangingVol = true;
+    changeVolume(e);
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (isChangingVol) changeVolume(e);
+  });
+  document.addEventListener('mouseup', function() {
+    isChangingVol = false;
+  });
+
+  // Next/prev button queues
+  var skipNext = document.querySelector('.ctrl-btn:nth-child(4)');
+  var skipPrev = document.querySelector('.ctrl-btn:nth-child(2)');
+  skipNext.addEventListener('click', function() {
+    if (songQueue.length > 0) {
+      queueIndex = (queueIndex + 1) % songQueue.length;
+      playSong(songQueue[queueIndex]);
+    }
+  });
+  skipPrev.addEventListener('click', function() {
+    if (songQueue.length > 0) {
+      queueIndex = (queueIndex - 1 + songQueue.length) % songQueue.length;
+      playSong(songQueue[queueIndex]);
+    }
+  });
+
+  // Open/Close Search
+  searchBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    searchOverlay.classList.add('open');
+    searchInput.focus();
+  });
+  searchClose.addEventListener('click', function(e) {
+    e.stopPropagation();
+    searchOverlay.classList.remove('open');
+  });
+
+  // Search input typing (debounce)
+  var searchTimeout;
+  searchInput.addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    var q = searchInput.value.trim();
+    if (q.length < 2) {
+      searchResults.innerHTML = '';
+      return;
+    }
+    searchTimeout = setTimeout(function() {
+      searchResults.innerHTML = '<div style="text-align:center;color:var(--mute);margin-top:20px;font-size:12px;">Searching...</div>';
+      fetch('/api/search?q=' + encodeURIComponent(q))
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (!data || data.length === 0) {
+            searchResults.innerHTML = '<div style="text-align:center;color:var(--mute);margin-top:20px;font-size:12px;">No results found</div>';
+            return;
+          }
+          searchResults.innerHTML = '';
+          songQueue = data;
+          data.forEach(function(song, idx) {
+            var item = document.createElement('div');
+            item.className = 'p-song-item';
+            item.innerHTML = '<img class="p-song-img" src="' + song.thumbnailUrl + '" />' +
+                             '<div class="p-song-info">' +
+                               '<div class="p-song-title">' + song.title + '</div>' +
+                               '<div class="p-song-artist">' + song.artist + '</div>' +
+                             '</div>' +
+                             '<div class="p-song-dur">' + song.durationText + '</div>';
+            item.addEventListener('click', function(e) {
+              e.stopPropagation();
+              queueIndex = idx;
+              playSong(song);
+              searchOverlay.classList.remove('open');
+            });
+            searchResults.appendChild(item);
+          });
+        })
+        .catch(function(err) {
+          console.error("Search API error", err);
+          searchResults.innerHTML = '<div style="text-align:center;color:var(--mute);margin-top:20px;font-size:12px;">Error fetching results</div>';
+        });
+    }, 400);
+  });
+
+  // Play Song helper
+  function playSong(song) {
+    currentSong = song;
+    
+    // Update player interface
+    document.getElementById('p-album-art').src = song.thumbnailUrl;
+    document.querySelector('.track-name').textContent = song.title;
+    document.querySelector('.track-artist').textContent = song.artist;
+    document.getElementById('p-now-playing-title').textContent = song.title;
+    
+    // Update cover art labels to look beautiful
+    document.querySelector('.pa-label-top').textContent = song.title.toUpperCase().split('').join(' ');
+    document.querySelector('.pa-label-mid').textContent = song.artist.toUpperCase();
+    document.querySelector('.pa-label-mid2').textContent = '';
+    document.querySelector('.pa-label-bot').textContent = 'A N Y F Y  M U S I C';
+
+    // Set audio source
+    audio.src = song.streamUrl;
+    
+    // Reset visualizer bars
+    document.querySelectorAll('.fvb').forEach(function(bar) {
+      bar.style.height = '15%';
+    });
+    
+    // Play
+    initAudio();
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    audio.play().then(function() {
+      playBtn.innerHTML = '&#9646;&#9646;';
+    }).catch(function(e) {
+      console.error("Playback error", e);
+    });
+    
+    // Color extraction
+    applyDominantColor(song.thumbnailUrl);
+    
+    // Load lyrics
+    loadLyrics(song);
+  }
+
+  // Load Lyrics helper
+  function loadLyrics(song) {
+    activeLyrics = [];
+    lyricsLines.innerHTML = '<div class="p-lyrics-empty">Loading lyrics...</div>';
+    document.getElementById('p-lyrics-summary').innerHTML = 'Loading<span class="lyrics-dots"><span>.</span><span>.</span><span>.</span></span>';
+    
+    fetch('/api/lyrics?title=' + encodeURIComponent(song.title) + '&artist=' + encodeURIComponent(song.artist) + '&duration=' + song.durationMs)
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (!data || data.length === 0) {
+          lyricsLines.innerHTML = '<div class="p-lyrics-empty">Lyrics unavailable</div>';
+          document.getElementById('p-lyrics-summary').textContent = 'Unavailable';
+          return;
+        }
+        activeLyrics = data;
+        lyricsLines.innerHTML = '';
+        document.getElementById('p-lyrics-summary').textContent = 'Synced';
+        data.forEach(function(line) {
+          var el = document.createElement('div');
+          el.className = 'p-lyric-line';
+          el.textContent = line.text;
+          el.addEventListener('click', function(e) {
+            e.stopPropagation();
+            audio.currentTime = line.timeMs / 1000;
+          });
+          lyricsLines.appendChild(el);
+        });
+      })
+      .catch(function(err) {
+        console.error("Lyrics error", err);
+        lyricsLines.innerHTML = '<div class="p-lyrics-empty">Could not load lyrics</div>';
+        document.getElementById('p-lyrics-summary').textContent = 'Error';
+      });
+  }
+
+  // Open/Close Lyrics
+  lyricsBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    lyricsOverlay.classList.add('open');
+  });
+  lyricsClose.addEventListener('click', function(e) {
+    e.stopPropagation();
+    lyricsOverlay.classList.remove('open');
+  });
+  
+  // Set default lyrics
+  loadLyrics(currentSong);
+
+  // Apply default dominant color on load
+  applyDominantColor(currentSong.thumbnailUrl);
+  
+  // Let's hook our visualizer bars inside the card
+  (function visualizerLoop() {
+    requestAnimationFrame(visualizerLoop);
+    if (window.anyfyFreqData) {
+      var bars = document.querySelectorAll('.fvb');
+      var len = window.anyfyFreqData.length;
+      bars.forEach(function(bar, idx) {
+        var freqIdx = Math.floor((idx / bars.length) * len);
+        var val = window.anyfyFreqData[freqIdx] || 0;
+        var h = 15 + (val / 255) * 80;
+        bar.style.height = h + '%';
+      });
+    }
+  })();
+  
+  // Expose color extraction globally toThreeJS
+  window.particleTargetColor = null;
+  function applyDominantColor(imgUrl) {
+    var img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = function() {
+      var canvas = document.createElement('canvas');
+      var ctx = canvas.getContext('2d');
+      canvas.width = 10;
+      canvas.height = 10;
+      ctx.drawImage(img, 0, 0, 10, 10);
+      var data = ctx.getImageData(0, 0, 10, 10).data;
+      var r = 0, g = 0, b = 0, count = 0;
+      for (var i = 0; i < data.length; i += 4) {
+        var pr = data[i], pg = data[i+1], pb = data[i+2], pa = data[i+3];
+        if (pa > 200 && (pr+pg+pb)/3 > 30 && (pr+pg+pb)/3 < 225) {
+          r += pr; g += pg; b += pb;
+          count++;
+        }
+      }
+      if (count === 0) {
+        for (var i = 0; i < data.length; i += 4) {
+          r += data[i]; g += data[i+1]; b += data[i+2];
+          count++;
+        }
+      }
+      r = Math.round(r / count);
+      g = Math.round(g / count);
+      b = Math.round(b / count);
+      
+      var glow = 'rgba(' + r + ',' + g + ',' + b + ', 0.45)';
+      var theme = 'rgb(' + r + ',' + g + ',' + b + ')';
+      
+      var p3d = document.getElementById('phone3d');
+      if (p3d) {
+        p3d.style.boxShadow = '0 60px 140px rgba(0,0,0,.85), 0 0 0 7px rgba(255,255,255,.03), inset 0 1px 0 rgba(255,255,255,.08), 0 0 90px ' + glow;
+        p3d.style.borderColor = 'rgba(' + r + ',' + g + ',' + b + ', 0.3)';
+      }
+      var pg = document.querySelector('.phone-glow');
+      if (pg) {
+        pg.style.background = 'radial-gradient(ellipse, ' + 'rgba(' + r + ',' + g + ',' + b + ', 0.35)' + ' 0%, transparent 70%)';
+      }
+      
+      // Update seekbar colors
+      if (progFill) progFill.style.background = theme;
+      if (progDot) {
+        progDot.style.background = theme;
+        progDot.style.boxShadow = '0 0 8px ' + theme;
+      }
+      
+      // Set background particles target color
+      window.particleTargetColor = new THREE.Color(r/255, g/255, b/255);
+    };
+    img.src = imgUrl;
+  }
+})();
+
 </script>
 </body>
 </html>

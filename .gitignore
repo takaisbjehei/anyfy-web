@@ -40,3 +40,7 @@ add_method.gradle
 fix_members.gradle
 inject_bs.gradle
 inject_queue.gradle
+
+# Vercel and Node dependencies
+node_modules/
+.agents/
