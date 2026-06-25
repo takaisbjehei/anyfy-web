@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+<meta name="theme-color" content="#070709"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="mobile-web-app-capable" content="yes"/>
 <title>Anyfy — The Player You Deserve</title>
 <meta name="description" content="Anyfy. The Android music player that makes Spotify look like a demo. Free. Ad-free. Forever."/>
 <meta property="og:title" content="Anyfy — The Player You Deserve"/>
@@ -433,7 +437,8 @@
   --fm:'Space Mono',monospace;
 }
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--white);font-family:var(--fb);-webkit-font-smoothing:antialiased;overflow-x:hidden;cursor:none}
+body{background:var(--bg);color:var(--white);font-family:var(--fb);-webkit-font-smoothing:antialiased;overflow-x:hidden;cursor:none;-webkit-tap-highlight-color:transparent;touch-action:pan-y}
+a,button,span[onclick],[style*='cursor:pointer'],[class*='btn'],[class*='ctrl']{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 
 /* ── CUSTOM CURSOR ── */
 #cur{position:fixed;width:12px;height:12px;background:var(--coral);border-radius:50%;pointer-events:none;z-index:99999;transform:translate(-50%,-50%);transition:width .2s,height .2s,background .2s;mix-blend-mode:difference}
@@ -459,6 +464,18 @@ nav.s{background:rgba(7,7,9,0.92);backdrop-filter:blur(20px);border-color:var(--
 .nav-links a:hover{color:var(--white)}
 .nav-dl{background:var(--coral);color:#fff;padding:9px 22px;border-radius:100px;font-size:13px;font-weight:700;text-decoration:none;letter-spacing:.02em;transition:all .2s cubic-bezier(.34,1.56,.64,1);box-shadow:0 0 24px rgba(255,92,53,.35)}
 .nav-dl:hover{transform:scale(1.06) translateY(-1px);box-shadow:0 0 40px rgba(255,92,53,.55);color:#fff!important}
+/* Hamburger */
+.nav-ham{display:none;flex-direction:column;gap:5px;background:none;border:none;cursor:pointer;padding:8px;-webkit-tap-highlight-color:transparent}
+.nav-ham span{display:block;width:22px;height:2px;background:var(--white);border-radius:2px;transition:all .3s cubic-bezier(.23,1,.32,1)}
+.nav-ham.open span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+.nav-ham.open span:nth-child(2){opacity:0;transform:scaleX(0)}
+.nav-ham.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+/* Mobile drawer */
+.nav-drawer{position:fixed;top:56px;left:0;right:0;background:rgba(7,7,9,0.97);backdrop-filter:blur(24px);padding:20px 16px 28px;display:flex;flex-direction:column;gap:6px;z-index:99;border-bottom:1px solid var(--rim);transform:translateY(-110%);transition:transform .35s cubic-bezier(.16,1,.3,1);pointer-events:none}
+.nav-drawer.open{transform:translateY(0);pointer-events:auto}
+.nav-drawer a{display:block;padding:13px 16px;font-size:16px;font-weight:600;color:var(--white);text-decoration:none;border-radius:12px;transition:background .2s}
+.nav-drawer a:hover,.nav-drawer a:active{background:rgba(255,255,255,.07)}
+.nav-drawer .nav-dl-mob{background:var(--coral);color:#fff;text-align:center;margin-top:8px;box-shadow:0 0 32px rgba(255,92,53,.35)}
 
 /* ── HERO ── */
 #hero{min-height:100vh;display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:0;padding:100px 80px 60px;position:relative;z-index:2;overflow:hidden}
@@ -660,19 +677,135 @@ footer{padding:60px 80px 40px;border-top:1px solid var(--rim);display:flex;align
 ::-webkit-scrollbar-thumb{background:rgba(255,92,53,.4);border-radius:4px}
 
 /* ── RESPONSIVE ── */
+
+/* ─── TABLET (≤900px) ─── */
 @media(max-width:900px){
-  nav{padding:0 24px}
-  #hero{grid-template-columns:1fr;padding:100px 24px 60px;text-align:center}
-  .hero-left{align-items:center}
-  .hero-right{margin-top:60px}
-  #features,#compare,#how,#dl,footer{padding-left:24px;padding-right:24px}
-  .feat-grid{grid-template-columns:1fr}
-  .fc.wide{grid-column:span 1}
-  .how-steps{grid-template-columns:1fr}
-  .how-line{display:none}
+  nav{padding:0 20px;height:60px}
   .nav-links{display:none}
-  footer{flex-direction:column;text-align:center}
+  .nav-dl{padding:8px 18px;font-size:12px}
+  #hero{grid-template-columns:1fr;padding:90px 20px 60px;text-align:center;gap:0}
+  .hero-left{align-items:center}
+  .hero-right{margin-top:50px}
+  .hero-stats{gap:24px;flex-wrap:wrap;justify-content:center}
+  .hero-actions{flex-wrap:wrap;justify-content:center}
+  #features{padding:100px 20px}
+  #compare{padding:80px 20px}
+  #how{padding:100px 20px}
+  #dl{padding:120px 20px}
+  footer{padding:40px 20px;flex-direction:column;text-align:center;gap:16px}
+  .feat-grid{grid-template-columns:1fr;gap:2px}
+  .fc.wide{grid-column:span 1}
+  .how-steps{grid-template-columns:1fr;gap:40px}
+  .how-line{display:none}
   .cmp-table th,.cmp-table td{padding:14px 10px;font-size:12px}
+  .rev-header{padding:0 20px}
+  .ft-links{gap:20px;flex-wrap:wrap;justify-content:center}
+  .dl-btns{gap:12px}
+}
+
+/* ─── MOBILE (≤600px) ─── */
+@media(max-width:600px){
+  .nav-ham{display:flex}
+  .nav-drawer{top:56px}
+  /* Base */
+  body{cursor:auto}
+  #cur,#cur2{display:none}
+
+  /* Nav */
+  nav{padding:0 16px;height:56px}
+  .live-pill{display:none}
+  .nav-logo{font-size:20px}
+  .nav-dl{padding:7px 16px;font-size:12px}
+
+  /* Hero */
+  #hero{padding:80px 16px 50px;min-height:auto}
+  .hero-h1{font-size:clamp(44px,12vw,72px);letter-spacing:-2px;margin-bottom:20px}
+  .hero-h1 .w2{-webkit-text-stroke:1.5px var(--coral)}
+  .hero-sub{font-size:14px;margin-bottom:36px;max-width:100%}
+  .hero-eyebrow{margin-bottom:24px}
+  .hero-actions{flex-direction:column;align-items:stretch;width:100%;gap:12px}
+  .btn-hero{justify-content:center;padding:15px 28px;font-size:14px}
+  .hero-stats{margin-top:40px;padding-top:32px;gap:0;display:grid;grid-template-columns:repeat(3,1fr);text-align:center}
+  .hstat-val{font-size:24px}
+  .hstat-lbl{font-size:10px}
+
+  /* Phone mockup - scale down for small screens */
+  .hero-right{margin-top:40px}
+  .phone-scene{perspective:800px}
+  .phone-wrap{animation:phone-float-m 6s ease-in-out infinite}
+  @keyframes phone-float-m{0%,100%{transform:translateY(0) rotateX(1deg) rotateY(-3deg)}50%{transform:translateY(-12px) rotateX(-1deg) rotateY(2deg)}}
+  .phone{width:min(260px,78vw);height:min(546px,163vw);border-radius:38px}
+  .ps{padding:46px 18px 16px}
+  .track-name{font-size:18px}
+  .ctrl-play{width:50px;height:50px;font-size:19px}
+  .ctrl-btn{font-size:18px}
+  .phone-glow{width:260px;bottom:-60px}
+
+  /* Features */
+  #features{padding:80px 16px}
+  .feat-header{margin-bottom:60px}
+  .feat-h2{font-size:clamp(32px,9vw,52px);letter-spacing:-1.5px}
+  .fc{padding:32px 24px}
+  .fc-title{font-size:18px}
+  .fc-desc{font-size:13px}
+
+  /* Comparison */
+  #compare{padding:60px 16px}
+  .cmp-title{font-size:clamp(30px,9vw,52px);margin-bottom:50px;letter-spacing:-1.5px}
+  .cmp-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .cmp-table th,.cmp-table td{padding:12px 8px;font-size:11px;white-space:nowrap}
+  .cmp-table th:first-child,.cmp-table td:first-child{white-space:normal;min-width:120px}
+
+  /* How */
+  #how{padding:80px 16px}
+  .how-n{width:60px;height:60px;font-size:20px}
+  .how-t{font-size:17px}
+  .how-d{font-size:13px}
+
+  /* Reviews */
+  #reviews{padding:80px 0}
+  .rev-header{padding:0 16px;margin-bottom:40px}
+  .rcard{width:260px;padding:22px}
+  .rcard-text{font-size:13px}
+
+  /* Download */
+  #dl{padding:100px 16px}
+  .dl-h{font-size:clamp(40px,12vw,80px);letter-spacing:-2px}
+  .dl-sub{font-size:14px;margin-bottom:40px}
+  .dl-btns{flex-direction:column;align-items:center;gap:12px}
+  .dl-apk{padding:16px 36px;font-size:15px;width:100%;max-width:340px;justify-content:center}
+  .dl-gh{padding:16px 28px;font-size:14px;width:100%;max-width:340px;justify-content:center}
+  .dl-meta{gap:16px}
+  .dl-m{font-size:11px}
+
+  /* Footer */
+  footer{padding:36px 16px;gap:16px}
+  .ft-links{gap:16px}
+  .ft-links a{font-size:12px}
+  .ft-copy{font-size:10px}
+
+  /* Ticker */
+  .ticker-item{font-size:11px;padding:0 20px}
+
+  /* Features section header */
+  .feat-sub{font-size:14px;max-width:100%}
+  .feat-num{margin-bottom:12px}
+
+  /* Search overlay on phone mockup */
+  .p-search-input{font-size:13px}
+  .p-song-title{font-size:13px}
+  .p-song-artist{font-size:10px}
+  .p-song-img{width:38px;height:38px}
+}
+
+/* ─── EXTRA SMALL (≤380px) ─── */
+@media(max-width:380px){
+  .phone{width:min(240px,84vw);height:min(504px,176vw);border-radius:34px}
+  .hero-h1{font-size:clamp(38px,13vw,60px)}
+  .ctrl-play{width:46px;height:46px;font-size:17px}
+  .dl-apk,.dl-gh{max-width:100%}
+  .hero-stats{grid-template-columns:repeat(3,1fr)}
+  .hstat-val{font-size:20px}
 }
 
 /* ── INTERACTIVE APP LAYER ── */
@@ -892,7 +1025,18 @@ footer{padding:60px 80px 40px;border-top:1px solid var(--rim);display:flex;align
     <li><a href="#reviews">Reviews</a></li>
   </ul>
   <a href="/app-release.apk" download="Anyfy-v2.0.apk" class="nav-dl">&#8595; Get APK</a>
+  <button class="nav-ham" id="nav-ham" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
 </nav>
+<!-- Mobile nav drawer -->
+<div class="nav-drawer" id="nav-drawer">
+  <a href="#features" class="nav-drawer-link">Features</a>
+  <a href="#compare" class="nav-drawer-link">vs Spotify</a>
+  <a href="#how" class="nav-drawer-link">Setup</a>
+  <a href="#reviews" class="nav-drawer-link">Reviews</a>
+  <a href="/app-release.apk" download="Anyfy-v2.0.apk" class="nav-dl nav-dl-mob">&#8595; Download APK — Free</a>
+</div>
 
 <!-- HERO -->
 <section id="hero">
@@ -1800,6 +1944,76 @@ document.head.appendChild(rs);
       window.particleTargetColor = new THREE.Color(r/255, g/255, b/255);
     };
     img.src = imgUrl;
+  }
+})();
+
+// ── HAMBURGER NAV ──
+(function() {
+  var ham = document.getElementById('nav-ham');
+  var drawer = document.getElementById('nav-drawer');
+  if (!ham || !drawer) return;
+  function toggleDrawer() {
+    var isOpen = ham.classList.toggle('open');
+    drawer.classList.toggle('open', isOpen);
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+  }
+  ham.addEventListener('click', toggleDrawer);
+  // Close drawer on link click
+  drawer.querySelectorAll('a').forEach(function(link) {
+    link.addEventListener('click', function() {
+      ham.classList.remove('open');
+      drawer.classList.remove('open');
+      document.body.style.overflow = '';
+    });
+  });
+  // Close on outside tap
+  document.addEventListener('click', function(e) {
+    if (drawer.classList.contains('open') && !drawer.contains(e.target) && !ham.contains(e.target)) {
+      ham.classList.remove('open');
+      drawer.classList.remove('open');
+      document.body.style.overflow = '';
+    }
+  });
+})();
+
+// ── TOUCH SUPPORT for progress & volume bars ──
+(function() {
+  function addTouchSeek(barEl, onMove) {
+    if (!barEl) return;
+    barEl.addEventListener('touchstart', function(e) {
+      e.stopPropagation();
+      var t = e.touches[0];
+      onMove(t);
+    }, {passive: true});
+    barEl.addEventListener('touchmove', function(e) {
+      var t = e.touches[0];
+      onMove(t);
+    }, {passive: true});
+  }
+
+  var progBar = document.querySelector('.prog-bar');
+  var progFill = document.querySelector('.prog-fill');
+  var audio = document.getElementById('p-audio');
+  if (progBar && progFill && audio) {
+    addTouchSeek(progBar, function(touch) {
+      var r = progBar.getBoundingClientRect();
+      var p = Math.max(0, Math.min(1, (touch.clientX - r.left) / r.width));
+      progFill.style.width = (p * 100) + '%';
+      audio.currentTime = p * (audio.duration || 0);
+    });
+  }
+
+  var volBar = document.querySelector('.vol-bar');
+  var volFill = document.querySelector('.vol-fill');
+  var volDot = document.querySelector('.vol-dot');
+  if (volBar && audio) {
+    addTouchSeek(volBar, function(touch) {
+      var r = volBar.getBoundingClientRect();
+      var p = Math.max(0, Math.min(1, (touch.clientX - r.left) / r.width));
+      if (volFill) volFill.style.width = (p * 100) + '%';
+      if (volDot) { volDot.style.left = (p * 100) + '%'; }
+      audio.volume = p;
+    });
   }
 })();
 
