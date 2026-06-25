@@ -3,9 +3,6 @@
   "version": "1.0.0",
   "description": "Anyfy Music Player Website",
   "main": "api/search.js",
-  "scripts": {
-    "build": "echo 'No build step required'"
-  },
   "dependencies": {
     "crypto-js": "^4.1.1"
   }
