@@ -31,7 +31,7 @@ app/build.gradle
 nul
 app-debug.apk
 app-debug-backup.apk
-app-release.apk
+# app-release.apk is intentionally tracked for direct download
 cobalt_directory.html
 cobalt_real.html
 invidious_raw.html
