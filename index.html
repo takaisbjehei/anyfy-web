@@ -53,8 +53,7 @@
   var songQueue = [];
   var queueIndex = 0;
   
-  // Set default audio src
-  audio.src = currentSong.streamUrl;
+  // Don't set src on load — wait for first play click
   
   // Web Audio setup
   var audioCtx, analyser, sourceNode;
@@ -81,6 +80,10 @@
       audioCtx.resume();
     }
     if (audio.paused) {
+      // Load src if not set yet
+      if (!audio.src || audio.src === window.location.href) {
+        audio.src = currentSong.streamUrl;
+      }
       audio.play().then(function() {
         playBtn.innerHTML = '&#9646;&#9646;';
       }).catch(function(e) {
@@ -1359,7 +1362,7 @@ body.is-playing .phone-glow {
             <div class="ctrl">
               <span class="ctrl-btn">&#10227;</span>
               <span class="ctrl-btn">&#9198;</span>
-              <div class="ctrl-play">&#9646;&#9646;</div>
+              <div class="ctrl-play">&#9654;</div>
               <span class="ctrl-btn">&#9197;</span>
               <span class="ctrl-btn">&#9654;&#9654;&#9654;</span>
             </div>
@@ -2139,8 +2142,7 @@ document.head.appendChild(rs);
   var songQueue = [];
   var queueIndex = 0;
   
-  // Set default audio src
-  audio.src = currentSong.streamUrl;
+  // Don't set src on load — wait for first play click
   
   // Web Audio setup
   var audioCtx, analyser, sourceNode;
@@ -2167,6 +2169,10 @@ document.head.appendChild(rs);
       audioCtx.resume();
     }
     if (audio.paused) {
+      // Load src if not set yet
+      if (!audio.src || audio.src === window.location.href) {
+        audio.src = currentSong.streamUrl;
+      }
       audio.play().then(function() {
         playBtn.innerHTML = '&#9646;&#9646;';
       }).catch(function(e) {
